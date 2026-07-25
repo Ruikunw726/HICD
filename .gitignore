@@ -1,0 +1,43 @@
+﻿# Large files exceeding GitHub limit
+*.whl
+*.sh
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.bin
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# Training data (too large for GitHub)
+train/
+test2/
+test_regis/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Env
+.env
+*.log

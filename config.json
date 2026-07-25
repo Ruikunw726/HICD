@@ -1,0 +1,151 @@
+{
+    "info":{
+        "algorithmName":"iis_changedetection_cyh",
+        "algorithmDescription":"变化检测算法，基于changemamba模型",
+        "algorithmType":"SCD",
+        "algorithmSubType":"EO",
+        "serviceType":"nonservice",
+        "algorithmPayload":"EO",
+        "dockerImagePublisher":"CAST-503",
+        "applicableArea":"",
+        "applicableObject":["17", "18"]
+     },
+    "API/CMD":[
+        {
+            "type":"train",
+            "url":"train",
+            "port":"18888",
+            "command":{
+                "prefix":"/usr/bin/python",
+                "prefixArgs":"-u",
+                "runFile":"/workspace/MambaCD/model_detector.py",
+                "runFileFixedArgs":"train",
+                "pretrainPathArg":"--pretrained",
+                "inputPathArg1":"--input_data",
+                "outputPathArg1":"--output_data",
+                "trainingLogPath":"--training_log"
+            },
+            "API":"train",
+            "CPU":2,
+            "mem":20000,
+            "GPUMem":16384,
+            "GPUPercentage":20,
+            "GPUNumber":1
+        },
+        {
+            "type":"infer",
+            "url":"infer",
+            "port":"18888",
+            "command":{
+                "prefix":"/usr/bin/python",
+                "prefixArgs":"-u",
+                "runFile":"/workspace/MambaCD/model_detector.py",
+                "runFileFixedArgs":"infer",
+                "pretrainPathArg":"--pretrained",
+                "inputPathArg1":"--input_data",
+                "inputPathArg2":"--input_data2",
+                "inputMetaArg1":"--metaxml_path",
+                "inputMetaArg2":"",
+                "outputPathArg1":"--output_data",
+                "outputPathArg2":"",
+
+                "sliceArg1":"--slice",
+                "inputXMLArg1":""
+            },
+            "API":"infer",
+            "CPU":2,
+            "mem":20000,
+            "GPUMem":5120,
+            "GPUPercentage":20,
+            "GPUNumber":1
+        },
+        {
+            "type":"eval",
+            "url":"eval",
+            "port":"18888",
+            "command":{
+                "prefix":"/usr/bin/python",
+                "prefixArgs":"-u",
+                "runFile":"/workspace/MambaCD/model_detector.py",
+                "runFileFixedArgs":"eval",
+                "pretrainPathArg":"--pretrained",
+                "inputPathArg1":"--input_data",
+                "outputPathArg1":"--output_data",
+                "outputPathArg2":"",
+                "inputMetaArg1":"--meta",
+                "sliceArg1":"--slice",
+                "inputXMLArg1":""
+            },
+            "API":"eval",
+            "CPU":2,
+            "mem":20000,
+            "GPUMem":5120,
+            "GPUPercentage":20,
+            "GPUNumber":1
+        }
+    ],
+    "args":[
+        {
+            "argName": "训练轮次",
+            "argKey": "epochs",
+            "argFlags": ["--epochs"],
+            "argDescription": "算法完整遍历数据集的次数。建议填写100，过大会造成过拟合，过小会训练不充分。",
+            "argType": "int",
+            "argAPI": ["train"],
+            "argDefault": 100,
+            "argRange":[1, 200],
+            "argRequired": "true"
+        }, 
+        {
+            "argName":"batchsize大小",
+            "argFlags":["--batch_size"],
+            "argKey":"batch_size",
+            "argDescription":"读取的控制batchsize大小，建议与学习率等比例调整，过大可能造成GPU显存溢出，过小可能造成训练时间增加。",
+            "argType":"int",
+            "argAPI":["train"],
+            "argDefault":6,
+            "argRange":[1, 16],
+            "argRequired":"true"
+        },
+        {
+            "argName":"学习率",
+            "argFlags":["--learning_rate"],
+            "argKey":"learning_rate",
+            "argDescription":"训练时的学习率，建议填写0.0001，过大可能造成算法过拟合，过小可能造成算法训练不充分。",
+            "argType":"float",
+            "argAPI":["train"],
+            "argDefault":0.0001,
+            "argRange":[0.00001, 0.01],
+            "argRequired":"true"
+        },
+        {
+            "argName":"动量",
+            "argFlags":["--momentum"],
+            "argKey":"momentum",
+            "argDescription":"训练过程的动量，建议填写0.9。",
+            "argType":"float",
+            "argAPI":["train"],
+            "argDefault":0.9,
+            "argRange":[0.8, 0.99],
+            "argRequired":"true"
+        },
+        {
+            "argName":"权重衰减",
+            "argFlags":["--weight_decay"],
+            "argKey":"weight_decay",
+            "argDescription":"训练过程的权重衰减，建议填写0.005。",
+            "argType":"float",
+            "argAPI":["train"],
+            "argDefault":0.005,
+            "argRange":[0.0001, 0.01],
+            "argRequired":"true"
+        }
+    ],
+    "trainingResult":{
+        "oaf1":"bigger"
+    },
+    "trainingData":{
+        "inputSize":["1024x1024"],
+        "channel":["3"]
+    }
+}
