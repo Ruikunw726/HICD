@@ -1,4 +1,4 @@
-﻿# Large files exceeding GitHub limit
+# Large files exceeding GitHub limit
 *.whl
 *.sh
 *.pth
@@ -41,3 +41,14 @@ desktop.ini
 # Env
 .env
 *.log
+
+# CLIP pretrained weights (too large for git)
+changedetection/models/clip_weights/
+
+# Unrelated files
+analyze/
+func/
+flask_server*.py
+record.txt
+result.xml
+*.docx
