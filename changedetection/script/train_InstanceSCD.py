@@ -43,7 +43,7 @@ from MambaCD.changedetection.datasets.imutils import normalize_img, random_crop_
 from MambaCD.changedetection.datasets.label_change import airport_add
 from MambaCD.changedetection.utils_func.metrics import Evaluator
 from MambaCD.changedetection.models.STMambaSCD_Instance import STMambaSCD_Instance
-from MambaCD.changedetection.models.InstanceLoss import CombinedLoss
+from MambaCD.changedetection.models.InstanceLoss import InstanceDetectionLoss
 import MambaCD.changedetection.utils_func.lovasz_loss as L
 from MambaCD.changedetection.utils_func.mcd_utils import accuracy, SCDD_eval_all, AverageMeter
 
@@ -239,8 +239,8 @@ class InstanceTrainer(object):
         
         # 构建模型
         self.deep_model = STMambaSCD_Instance(
-            output_cd=2,
-            output_clf=7,
+            output_classes=7,
+            # output_clf merged into output_classes
             pretrained=args.pretrained_weight_path,
             num_queries=args.num_queries,
             clip_model="ViT-B-16",
@@ -349,28 +349,13 @@ class InstanceTrainer(object):
                 # 前向传播
                 outputs = self.deep_model(pre_imgs, post_imgs)
                 
-                # 计算损失
+                # 实例级损失
                 loss, loss_dict = self.criterion(
-                    outputs, label_cd, label_clf_t1, label_clf_t2,
+                    outputs['pred_boxes'], outputs['pred_logits'],
                     gt_boxes_list, gt_labels_list,
                 )
                 
-                # 加入 Lovasz 损失
-                lovasz_cd = L.lovasz_softmax(
-                    F.softmax(outputs["pixel_change_map"], dim=1),
-                    label_cd, ignore=255
-                )
-                lovasz_t1 = L.lovasz_softmax(
-                    F.softmax(outputs["pixel_T1_map"], dim=1),
-                    label_clf_t1, ignore=255
-                )
-                lovasz_t2 = L.lovasz_softmax(
-                    F.softmax(outputs["pixel_T2_map"], dim=1),
-                    label_clf_t2, ignore=255
-                )
-                lovasz_loss = 0.75 * (lovasz_cd + 0.5 * (lovasz_t1 + lovasz_t2))
-                
-                total_loss = loss + lovasz_loss
+                total_loss = loss
                 
                 # 反向传播
                 self.optim.zero_grad()
@@ -386,7 +371,7 @@ class InstanceTrainer(object):
                           f"Pixel: {loss_dict['loss_pixel'] if 'loss_pixel' in loss_dict else loss.item():.4f} | "
                           f"Instance: {loss_dict['loss_instance']:.4f} | "
                           f"Change: {loss_dict['loss_change']:.4f} | "
-                          f"Lovasz: {lovasz_loss.item():.4f}")
+                          f"Cls: {loss_dict['loss_cls']:.4f}")
                 
                 # 保存最优模型
                 if (itera + 1) % args.save_freq == 0:
