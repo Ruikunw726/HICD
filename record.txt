@@ -1,6 +1,0 @@
-timm
-imageio
-gdal
-skimage
-seaborn
-fvcore
