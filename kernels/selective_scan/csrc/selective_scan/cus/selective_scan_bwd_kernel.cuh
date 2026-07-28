@@ -1,4 +1,4 @@
-/******************************************************************************
+﻿/******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
 
@@ -18,6 +18,10 @@
 #include "selective_scan_common.h"
 #include "reverse_scan.cuh"
 #include "static_switch.h"
+#ifndef M_LOG2E
+#define M_LOG2E 1.44269504088896340736f
+#endif
+
 
 template<int kNThreads_, int kNItems_, bool kIsEvenLen_, bool kDeltaSoftplus_, typename input_t_, typename weight_t_>
 struct Selective_Scan_bwd_kernel_traits {

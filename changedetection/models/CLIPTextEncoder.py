@@ -22,7 +22,8 @@ class CLIPTextEncoder(nn.Module):
             model, _, _ = open_clip.create_model_and_transforms(
                 "ViT-B-16", pretrained=""
             )
-            model.load_state_dict(checkpoint["state_dict"])
+            state_dict = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
+            model.load_state_dict(state_dict)
             self.clip_model = model
         else:
             self.clip_model, _, _ = open_clip.create_model_and_transforms(

@@ -1,88 +1,87 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-训练脚本: HierarchicalSCDInstance (层级实例级语义变化检测)
+全量训练脚本 - MambaCD 层级实例级变化检测
+支持: Airports + Ports + Urban-Rural Areas 三个场景联合训练
 
 用法:
-    python train_InstanceSCD.py \
-        --data_dir D:/CD/0617final/Airports \
-        --classes_csv D:\\CD\\0617final\\classes.csv \
-        --pretrained_weight_path /path/to/vssm1_tiny_224.pth \
-        --clip_weights_path /path/to/clip_weights \
-        --batch_size 2 \
-        --crop_size 512 \
-        --max_epochs 100
-
-数据目录结构:
-    data_dir/
-    ├── train/
-    │   ├── image/pre/*.tif
-    │   ├── image/post/*.tif
-    │   └── label/*.tif
-    ├── val/
-    │   └── ...
-    └── instances.json  (由 pixel_to_instance_0617final.py 生成)
+    cd /mnt/f/mambacd/home
+    export PYTHONPATH="/mnt/f/mambacd/home:$PYTHONPATH"
+    source ~/miniconda/bin/activate && conda activate mamba
+    
+    # 首次运行先准备数据 (在Windows PowerShell中运行 prepare_data.ps1)
+    
+    # 训练
+    python MambaCD/changedetection/script/train_full.py \
+        --batch_size 4 \
+        --max_epochs 100 \
+        --learning_rate 1e-4
 """
 
 import sys
 import os
-import argparse
-import time
 import json
+import time
+import argparse
 import numpy as np
 from collections import Counter
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from tqdm import tqdm
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from MambaCD.changedetection.configs.config import get_config
-from MambaCD.changedetection.datasets.imutils import (
-    normalize_img, random_crop_bda, random_fliplr_bda,
-    random_flipud_bda, random_rot_bda,
-)
+from MambaCD.changedetection.datasets.imutils import normalize_img
 from MambaCD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
 from MambaCD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
 from MambaCD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
-    train_id_to_target_state,
+    CLIP_TEXT_PROMPTS,
 )
 
 from osgeo import gdal
 gdal.UseExceptions()
 
 
+def win_to_wsl(path):
+    """将 Windows 路径转换为 WSL 路径"""
+    if path and len(path) >= 2 and path[1] == ':':
+        drive = path[0].lower()
+        rest = path[2:].replace('\\\\', '/')
+        return f'/mnt/{drive}{rest}'
+    return path
+
+
+
 # =====================================================================
-# Dataset
+# Dataset (支持扁平目录结构)
 # =====================================================================
-class InstanceChangeDetectionDataset(Dataset):
+class ChangeDetectionDataset(Dataset):
     """
     加载双时相影像 + 实例级标注。
-
-    产出:
-        pre_img:      (3, H, W) float32
-        post_img:     (3, H, W) float32
-        gt_boxes:     (M, 4) float32  [cx, cy, w, h] 归一化
-        gt_target:    (M,) long       目标类型 0-15
-        gt_state:     (M,) long       变化状态 0-5
+    支持两种目录结构:
+      1. image/pre/*.tif + image/post/*.tif
+      2. image/*_pre_war.tif + image/*_post_war.tif (扁平结构)
     """
-    def __init__(self, dataset_path, instances_dict, crop_size,
+    def __init__(self, dataset_path, instances_dict, crop_size=512,
                  max_iters=None, mode="train"):
         self.dataset_path = dataset_path
         self.crop_size = crop_size
         self.instances_dict = instances_dict
         self.mode = mode
 
-        # 构建样本列表: [(split, filename), ...]
+        # 检测目录结构
+        train_dir = os.path.join(dataset_path, "train", "image")
+        self.flat_structure = not os.path.isdir(os.path.join(train_dir, "pre"))
+
+        # 构建样本列表
         self.samples = []
         for key, val in instances_dict.items():
             split, fname = key.split("/", 1)
-            # 只加载有实例的样本
             if val['num_instances'] > 0:
                 self.samples.append((split, fname))
 
@@ -91,8 +90,7 @@ class InstanceChangeDetectionDataset(Dataset):
             self.samples = self.samples * repeats
             self.samples = self.samples[:max_iters]
 
-        print(f"Dataset: {len(self.samples)} samples "
-              f"({mode}, {dataset_path})")
+        print(f"  Dataset: {len(self.samples)} samples ({mode}, flat={self.flat_structure})")
 
     def __len__(self):
         return len(self.samples)
@@ -100,12 +98,17 @@ class InstanceChangeDetectionDataset(Dataset):
     def __getitem__(self, index):
         split, fname = self.samples[index]
         stem = os.path.splitext(fname)[0]
+        img_stem = stem.replace('_target', '')  # 图片文件名没有 _target
 
-        # 路径
-        pre_path = os.path.join(self.dataset_path, split, "image", "pre", stem + ".tif")
-        post_path = os.path.join(self.dataset_path, split, "image", "post", stem + ".tif")
+        # 根据目录结构构建路径
+        if self.flat_structure:
+            pre_path = os.path.join(self.dataset_path, split, "image", img_stem + "_pre_war.tif")
+            post_path = os.path.join(self.dataset_path, split, "image", img_stem + "_post_war.tif")
+        else:
+            pre_path = os.path.join(self.dataset_path, split, "image", "pre", stem + ".tif")
+            post_path = os.path.join(self.dataset_path, split, "image", "post", stem + ".tif")
 
-        # 读取影像
+        # 读取影像 (返回 HWC 格式)
         pre_img = self._read_tif(pre_path).astype(np.float32)
         post_img = self._read_tif(post_path).astype(np.float32)
 
@@ -113,26 +116,16 @@ class InstanceChangeDetectionDataset(Dataset):
         key = f"{split}/{fname}"
         inst_data = self.instances_dict[key]
         instances = inst_data['instances']
-        img_h, img_w = inst_data['image_size']
 
-        # 转换为 tensor
-        gt_boxes = torch.tensor(
-            [inst['bbox'] for inst in instances], dtype=torch.float32
-        )
-        gt_target = torch.tensor(
-            [inst['target_idx'] for inst in instances], dtype=torch.long
-        )
-        gt_state = torch.tensor(
-            [inst['state_idx'] for inst in instances], dtype=torch.long
-        )
+        gt_boxes = torch.tensor([inst['bbox'] for inst in instances], dtype=torch.float32)
+        gt_target = torch.tensor([inst['target_idx'] for inst in instances], dtype=torch.long)
+        gt_state = torch.tensor([inst['state_idx'] for inst in instances], dtype=torch.long)
 
-        # 数据增强 (训练时)
+        # 数据增强
         if self.mode == "train":
-            pre_img, post_img, gt_boxes = self._random_augment(
-                pre_img, post_img, gt_boxes
-            )
+            pre_img, post_img, gt_boxes = self._random_augment(pre_img, post_img, gt_boxes)
 
-        # 归一化
+        # 归一化 (HWC 格式)
         pre_img = normalize_img(pre_img)
         post_img = normalize_img(post_img)
 
@@ -156,32 +149,30 @@ class InstanceChangeDetectionDataset(Dataset):
         arr = ds.ReadAsArray()
         ds = None
         if arr.ndim == 2:
-            arr = np.stack([arr, arr, arr], axis=-1)  # (H,W,3)
+            arr = np.stack([arr, arr, arr], axis=-1)
         elif arr.ndim == 3:
             if arr.shape[0] > 3:
-                arr = arr[:3]  # 取前3个波段
+                arr = arr[:3]
             arr = np.transpose(arr, (1, 2, 0))  # (C,H,W)->(H,W,C)
         return arr
 
     def _random_augment(self, pre_img, post_img, gt_boxes):
-        """同步随机增强: 翻转 + 旋转, bbox 同步变换"""
-        H, W = pre_img.shape[:2]
-
-        # 随机水平翻转
+        """同步随机增强: 翻转 + 旋转"""
+        # 水平翻转
         if np.random.rand() > 0.5:
             pre_img = pre_img[:, ::-1, :].copy()
             post_img = post_img[:, ::-1, :].copy()
             if gt_boxes.numel() > 0:
                 gt_boxes[:, 0] = 1.0 - gt_boxes[:, 0]
 
-        # 随机垂直翻转
+        # 垂直翻转
         if np.random.rand() > 0.5:
             pre_img = pre_img[::-1, :, :].copy()
             post_img = post_img[::-1, :, :].copy()
             if gt_boxes.numel() > 0:
                 gt_boxes[:, 1] = 1.0 - gt_boxes[:, 1]
 
-        # 随机 90° 旋转 (HWC格式: axes=(0,1)旋转H-W平面)
+        # 90度旋转 (HWC格式: axes=(0,1))
         k = np.random.randint(0, 4)
         if k > 0:
             pre_img = np.rot90(pre_img, k, axes=(0, 1)).copy()
@@ -194,8 +185,9 @@ class InstanceChangeDetectionDataset(Dataset):
 
         return pre_img, post_img, gt_boxes
 
+
 def collate_fn(batch):
-    """自定义 collate: gt_boxes/gt_target/gt_state 长度不一, 用 list 传递"""
+    """自定义 collate: gt_boxes 长度不一"""
     return {
         'pre_img': torch.stack([b['pre_img'] for b in batch]),
         'post_img': torch.stack([b['post_img'] for b in batch]),
@@ -209,61 +201,67 @@ def collate_fn(batch):
 # =====================================================================
 # Trainer
 # =====================================================================
-class InstanceTrainer:
+class Trainer:
     def __init__(self, args):
         self.args = args
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Device: {self.device}")
 
-        # 加载实例标注
-        print(f"Loading instances from: {args.instances_json}")
-        with open(args.instances_json, 'r', encoding='utf-8') as f:
-            self.all_instances = json.load(f)
+        # 加载所有场景的 instances 并创建 Dataset
+        args.data_dir = win_to_wsl(args.data_dir)
+        args.classes_csv = win_to_wsl(args.classes_csv) if args.classes_csv else None
+        scenes = args.scenes.split(",")
+        print("\nLoading datasets...")
+        train_datasets = []
+        val_datasets = []
 
-        # 分割 train/val
-        self.train_instances = {
-            k: v for k, v in self.all_instances.items()
-            if k.startswith("train/")
-        }
-        self.val_instances = {
-            k: v for k, v in self.all_instances.items()
-            if k.startswith("val/")
-        }
-        # 如果没有 val, 用 train 的一部分
-        if len(self.val_instances) == 0:
-            keys = list(self.train_instances.keys())
-            split_idx = int(len(keys) * 0.9)
-            self.val_instances = {k: self.train_instances[k] for k in keys[split_idx:]}
-            self.train_instances = {k: self.train_instances[k] for k in keys[:split_idx]}
+        for scene in scenes:
+            scene_dir = os.path.join(args.data_dir, scene.strip())
+            json_path = os.path.join(scene_dir, "instances.json")
 
-        print(f"  Train: {len(self.train_instances)} images")
-        print(f"  Val:   {len(self.val_instances)} images")
+            if not os.path.exists(json_path):
+                print(f"Warning: {json_path} not found, skipping {scene}")
+                continue
 
-        # Dataset
-        self.train_dataset = InstanceChangeDetectionDataset(
-            args.data_dir, self.train_instances, args.crop_size,
-            max_iters=args.max_iters, mode="train"
-        )
-        self.val_dataset = InstanceChangeDetectionDataset(
-            args.data_dir, self.val_instances, args.crop_size,
-            mode="val"
-        )
+            with open(json_path, 'r', encoding='utf-8') as f:
+                instances = json.load(f)
+
+            # 按 train/val 分割 (保留 "train/" 前缀)
+            train_inst = {k: v for k, v in instances.items() if k.startswith("train/")}
+            val_inst = {k: v for k, v in instances.items() if k.startswith("val/")}
+
+            print(f"  {scene.strip()}: train={len(train_inst)}, val={len(val_inst)}")
+
+            if train_inst:
+                train_datasets.append(ChangeDetectionDataset(
+                    scene_dir, train_inst, args.crop_size, mode="train"))
+            if val_inst:
+                val_datasets.append(ChangeDetectionDataset(
+                    scene_dir, val_inst, args.crop_size, mode="val"))
+
+        if not train_datasets:
+            raise ValueError("No training data found!")
+
+        self.train_dataset = ConcatDataset(train_datasets) if len(train_datasets) > 1 else train_datasets[0]
+        self.val_dataset = ConcatDataset(val_datasets) if len(val_datasets) > 1 else val_datasets[0] if val_datasets else None
+
+        print(f"\nTotal: train={len(self.train_dataset)}, val={len(self.val_dataset) if self.val_dataset else 0}")
 
         self.train_loader = DataLoader(
             self.train_dataset, batch_size=args.batch_size,
             shuffle=True, num_workers=args.num_workers,
-            collate_fn=collate_fn, drop_last=True,
+            collate_fn=collate_fn, drop_last=True, pin_memory=True,
         )
         self.val_loader = DataLoader(
             self.val_dataset, batch_size=args.batch_size,
             shuffle=False, num_workers=args.num_workers,
-            collate_fn=collate_fn,
-        )
+            collate_fn=collate_fn, pin_memory=True,
+        ) if self.val_dataset is not None else None
 
-        # Model
-        print("Building model...")
+        # 模型
+        print("\nBuilding model...")
         cfg = get_config(args)
         cfg.defrost()
-        # Build complete kwargs dict from config
         vssm = cfg.MODEL.VSSM
         cfg_dict = {
             'norm_layer': vssm.NORM_LAYER,
@@ -290,6 +288,7 @@ class InstanceTrainer:
             'patchembed': vssm.PATCHEMBED,
             'patch_norm': vssm.PATCH_NORM,
         }
+
         self.model = HierarchicalSCDInstance(
             pretrained=args.pretrained_weight_path,
             num_queries_per_scale=args.num_queries,
@@ -297,83 +296,93 @@ class InstanceTrainer:
             **cfg_dict,
         ).to(self.device)
 
-        # Loss
+        total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
+        print(f"Model parameters: {total_params:.2f}M")
+
+        # 损失函数
         self.criterion = HierarchicalInstanceLoss(
             num_targets=NUM_TARGETS, num_states=NUM_STATES,
         ).to(self.device)
 
-        # Optimizer
+        # 优化器
         self.optimizer = optim.AdamW(
             self.model.parameters(),
             lr=args.learning_rate,
             weight_decay=args.weight_decay,
         )
 
-        # Scheduler
+        # 学习率调度
         total_steps = len(self.train_loader) * args.max_epochs
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=total_steps, eta_min=1e-7
         )
 
-        # Mixed precision
+        # 混合精度
         self.scaler = torch.amp.GradScaler(enabled=args.use_amp)
 
-        # Checkpoint
-        self.model_save_path = os.path.join(args.data_dir, "checkpoints_instance")
-        os.makedirs(self.model_save_path, exist_ok=True)
-
+        # 保存目录
+        self.save_dir = os.path.join(args.output_dir, args.exp_name)
+        os.makedirs(self.save_dir, exist_ok=True)
         self.best_loss = float('inf')
-        print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()) / 1e6:.2f}M")
+
+        # 恢复训练
+        self.start_epoch = 0
+        if args.resume and os.path.exists(args.resume):
+            self._load_checkpoint(args.resume)
+
+    def _load_checkpoint(self, path):
+        print(f"Resuming from {path}")
+        ckpt = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(ckpt['model_state_dict'])
+        self.optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        self.start_epoch = ckpt.get('epoch', 0)
+        self.best_loss = ckpt.get('val_loss', float('inf'))
+        print(f"  Epoch: {self.start_epoch}, Best loss: {self.best_loss:.4f}")
 
     def train_epoch(self, epoch):
         self.model.train()
         total_loss = 0
         num_batches = 0
+        pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.args.max_epochs}")
 
-        pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}")
-        for batch_idx, batch in enumerate(pbar):
+        for batch in pbar:
             pre_imgs = batch['pre_img'].to(self.device)
             post_imgs = batch['post_img'].to(self.device)
-            gt_boxes_list = batch['gt_boxes']
-            gt_target_list = batch['gt_target']
-            gt_state_list = batch['gt_state']
+            gt_boxes_list = [b.to(self.device) for b in batch['gt_boxes']]
+            gt_target_list = [t.to(self.device) for t in batch['gt_target']]
+            gt_state_list = [s.to(self.device) for s in batch['gt_state']]
 
-            # 移到 GPU
-            gt_boxes_list = [b.to(self.device) for b in gt_boxes_list]
-            gt_target_list = [t.to(self.device) for t in gt_target_list]
-            gt_state_list = [s.to(self.device) for s in gt_state_list]
+            self.optimizer.zero_grad()
 
-            with torch.amp.autocast('cuda', enabled=self.args.use_amp):
+            with torch.amp.autocast(device_type='cuda', enabled=self.args.use_amp):
                 outputs = self.model(pre_imgs, post_imgs)
                 loss, loss_dict = self.criterion(
                     outputs, gt_boxes_list, gt_target_list, gt_state_list
                 )
 
-            self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), max_norm=5.0
-            )
+            if self.args.grad_clip > 0:
+                self.scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
             self.scaler.step(self.optimizer)
             self.scaler.update()
             self.scheduler.step()
 
             total_loss += loss.item()
             num_batches += 1
-
             pbar.set_postfix({
                 'loss': f"{loss.item():.4f}",
-                'bbox': f"{loss_dict['loss_bbox']:.4f}",
-                'target': f"{loss_dict['loss_target']:.4f}",
-                'state': f"{loss_dict['loss_state']:.4f}",
+                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
             })
 
-        avg_loss = total_loss / max(num_batches, 1)
-        return avg_loss
+        return total_loss / max(num_batches, 1)
 
     @torch.no_grad()
     def validate(self):
         self.model.eval()
+        if self.val_loader is None:
+            return float('inf')
+
         total_loss = 0
         num_batches = 0
 
@@ -384,10 +393,11 @@ class InstanceTrainer:
             gt_target_list = [t.to(self.device) for t in batch['gt_target']]
             gt_state_list = [s.to(self.device) for s in batch['gt_state']]
 
-            outputs = self.model(pre_imgs, post_imgs)
-            loss, _ = self.criterion(
-                outputs, gt_boxes_list, gt_target_list, gt_state_list
-            )
+            with torch.amp.autocast(device_type='cuda', enabled=self.args.use_amp):
+                outputs = self.model(pre_imgs, post_imgs)
+                loss, _ = self.criterion(
+                    outputs, gt_boxes_list, gt_target_list, gt_state_list
+                )
 
             total_loss += loss.item()
             num_batches += 1
@@ -395,16 +405,15 @@ class InstanceTrainer:
         return total_loss / max(num_batches, 1)
 
     def train(self):
-        print(f"\nStarting training for {self.args.max_epochs} epochs")
-        print(f"  Device: {self.device}")
-        print(f"  AMP: {self.args.use_amp}")
+        print(f"\n{'='*60}")
+        print(f"Starting training: {self.args.max_epochs} epochs")
         print(f"  Batch size: {self.args.batch_size}")
-        print(f"  LR: {self.args.learning_rate}")
-        print(f"  Queries per scale: {self.args.num_queries}")
-        print(f"  Total queries: {3 * self.args.num_queries}")
-        print()
+        print(f"  Learning rate: {self.args.learning_rate}")
+        print(f"  AMP: {self.args.use_amp}")
+        print(f"  Save dir: {self.save_dir}")
+        print(f"{'='*60}\n")
 
-        for epoch in range(self.args.max_epochs):
+        for epoch in range(self.start_epoch, self.args.max_epochs):
             train_loss = self.train_epoch(epoch)
             val_loss = self.validate()
 
@@ -414,77 +423,83 @@ class InstanceTrainer:
             # 保存最优
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
-                save_path = os.path.join(self.model_save_path, "best.pth")
+                save_path = os.path.join(self.save_dir, "best.pth")
+                torch.save({
+                    'epoch': epoch + 1,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'val_loss': val_loss,
+                    'train_loss': train_loss,
+                }, save_path)
+                print(f"  → Best model saved: {save_path}")
+
+            # 定期保存
+            if (epoch + 1) % self.args.save_freq == 0:
+                save_path = os.path.join(self.save_dir, f"epoch{epoch+1}.pth")
                 torch.save({
                     'epoch': epoch + 1,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'val_loss': val_loss,
                 }, save_path)
-                print(f"  → Best model saved: {save_path}")
 
-            # 定期保存
-            if (epoch + 1) % self.args.save_freq == 0:
-                save_path = os.path.join(
-                    self.model_save_path,
-                    f"epoch{epoch+1}.pth"
-                )
-                torch.save(self.model.state_dict(), save_path)
+            # 保存最新
+            save_path = os.path.join(self.save_dir, "latest.pth")
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'val_loss': val_loss,
+                'best_loss': self.best_loss,
+            }, save_path)
 
         print(f"\nTraining complete. Best val loss: {self.best_loss:.4f}")
+        print(f"Best model: {os.path.join(self.save_dir, 'best.pth')}")
 
 
 # =====================================================================
 # Main
 # =====================================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Train HierarchicalSCDInstance"
-    )
+    parser = argparse.ArgumentParser(description="MambaCD Full Training")
 
     # 数据
-    parser.add_argument("--data_dir", type=str,
-                        default=r"D:\CD\0617final\Airports",
-                        help="场景目录 (包含 train/val/image/label)")
-    parser.add_argument("--classes_csv", type=str,
-                        default=r"D:\CD\0617final\classes.csv")
-    parser.add_argument("--instances_json", type=str,
-                        default=r"D:\CD\0617final\Airports\instances.json",
-                        help="实例标注 JSON")
+    parser.add_argument("--data_dir", type=str, default="D:/CD/0617final",
+                        help="0617final 数据集根目录")
+    parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
+                        help="训练场景，逗号分隔")
+    parser.add_argument("--classes_csv", type=str, default="D:/CD/0617final/classes.csv")
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str, default=None,
-                        help="VSSM 预训练权重")
+                        help="VSSM 预训练权重路径")
     parser.add_argument("--clip_weights_path", type=str, default=None,
                         help="CLIP 权重路径")
-    parser.add_argument("--num_queries", type=int, default=34,
-                        help="每个尺度的查询数")
+    parser.add_argument("--num_queries", type=int, default=34)
 
     # 训练
-    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--crop_size", type=int, default=512)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.05)
     parser.add_argument("--max_epochs", type=int, default=100)
-    parser.add_argument("--max_iters", type=int, default=None,
-                        help="每 epoch 迭代次数 (None=全部)")
+    parser.add_argument("--max_iters", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--use_amp", action="store_true",
-                        help="混合精度训练")
-    parser.add_argument("--save_freq", type=int, default=10,
-                        help="每 N epoch 保存一次")
+    parser.add_argument("--use_amp", action="store_true", help="混合精度训练")
+    parser.add_argument("--grad_clip", type=float, default=1.0)
+    parser.add_argument("--save_freq", type=int, default=10)
+
+    # 输出
+    parser.add_argument("--output_dir", type=str, default="MambaCD/outputs")
+    parser.add_argument("--exp_name", type=str, default="full_train")
+    parser.add_argument("--resume", type=str, default=None, help="恢复训练的检查点路径")
 
     # VSSM config
-    parser.add_argument("--cfg", type=str, default=None)
+    parser.add_argument("--cfg", type=str,
+                        default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()
 
-    # 检查文件
-    if not os.path.exists(args.instances_json):
-        print(f"Error: instances.json not found: {args.instances_json}")
-        print("Run pixel_to_instance_0617final.py first.")
-        sys.exit(1)
-
-    trainer = InstanceTrainer(args)
+    trainer = Trainer(args)
     trainer.train()
