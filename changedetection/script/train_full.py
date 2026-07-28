@@ -508,3 +508,52 @@ class Trainer:
         print(f"  Best mAP@0.5: {self.best_map:.4f}")
         print(f"  Log: {log_path}")
         print(f"  Best model: {os.path.join(self.save_dir, 'best.pth')}")
+
+# =====================================================================
+# Main
+# =====================================================================
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="MambaCD Full Training")
+
+    # 数据
+    parser.add_argument("--data_dir", type=str, default="MambaCD/0617final",
+                        help="0617final 数据集根目录")
+    parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
+                        help="训练场景，逗号分隔")
+    parser.add_argument("--classes_csv", type=str, default="MambaCD/0617final/classes.csv")
+
+    # 模型
+    parser.add_argument("--pretrained_weight_path", type=str,
+                        default="MambaCD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
+                        help="VSSM 预训练权重路径")
+    parser.add_argument("--clip_weights_path", type=str,
+                        default="MambaCD/weights/open_clip_pytorch_model.bin",
+                        help="CLIP 权重路径")
+    parser.add_argument("--num_queries", type=int, default=34)
+
+    # 训练
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--crop_size", type=int, default=512)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--weight_decay", type=float, default=0.05)
+    parser.add_argument("--max_epochs", type=int, default=100)
+    parser.add_argument("--max_iters", type=int, default=None)
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--use_amp", action="store_true", help="混合精度训练")
+    parser.add_argument("--grad_clip", type=float, default=1.0)
+    parser.add_argument("--save_freq", type=int, default=10)
+
+    # 输出
+    parser.add_argument("--output_dir", type=str, default="MambaCD/outputs")
+    parser.add_argument("--exp_name", type=str, default="full_train")
+    parser.add_argument("--resume", type=str, default=None, help="恢复训练的检查点路径")
+
+    # VSSM config
+    parser.add_argument("--cfg", type=str,
+                        default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+    parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
+
+    args = parser.parse_args()
+
+    trainer = Trainer(args)
+    trainer.train()
