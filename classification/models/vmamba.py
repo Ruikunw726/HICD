@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 import math
 import copy
@@ -444,7 +444,8 @@ class Linear2d(nn.Linear):
         return F.conv2d(x, self.weight[:, :, None, None], self.bias)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
-        state_dict[prefix + "weight"] = state_dict[prefix + "weight"].view(self.weight.shape)
+        if prefix + "weight" in state_dict:
+            state_dict[prefix + "weight"] = state_dict[prefix + "weight"].view(self.weight.shape)
         return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
 

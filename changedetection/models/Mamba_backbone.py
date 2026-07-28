@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8 -*-
 from MambaCD.classification.models.vmamba import VSSM, LayerNorm2d
 
 import torch
@@ -24,7 +25,33 @@ class Backbone_VSSM(VSSM):
             self.add_module(layer_name, layer)
 
         del self.classifier
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        # Skip VSSM's _load_from_state_dict which renames norm->classifier.norm and head->classifier.head
+        # We handle key remapping ourselves in _remap_keys
+        nn.Module._load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
         self.load_pretrained(pretrained)
+
+    def _remap_keys(self, state_dict):
+        """Remap old-style VSSM checkpoint keys to match current model.
+        
+        Old checkpoint: self_attention.*, ln_1.*
+        Current model:  op.*, norm.*
+        """
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            new_k = k
+            # Remove classifier head keys (model deleted self.classifier)
+            if k.startswith('head.'):
+                continue
+            # Remap block internals: self_attention -> op
+            if '.self_attention.' in new_k:
+                new_k = new_k.replace('.self_attention.', '.op.')
+            # Remap block norm: ln_1 -> norm
+            if '.ln_1.' in new_k:
+                new_k = new_k.replace('.ln_1.', '.norm.')
+            new_state_dict[new_k] = v
+        return new_state_dict
 
     def load_pretrained(self, ckpt=None, key="model"):
         if ckpt is None:
@@ -33,10 +60,26 @@ class Backbone_VSSM(VSSM):
         try:
             _ckpt = torch.load(open(ckpt, "rb"), map_location=torch.device("cpu"))
             print(f"Successfully load ckpt {ckpt}")
-            incompatibleKeys = self.load_state_dict(_ckpt[key], strict=False)
-            print(incompatibleKeys)        
+            
+            if isinstance(_ckpt, dict) and key in _ckpt:
+                raw_state = _ckpt[key]
+            elif isinstance(_ckpt, dict) and 'state_dict' in _ckpt:
+                raw_state = _ckpt['state_dict']
+            else:
+                raw_state = _ckpt
+            
+            # Remap keys for compatibility
+            remapped_state = self._remap_keys(raw_state)
+            
+            incompatibleKeys = self.load_state_dict(remapped_state, strict=False)
+            print(f"Pretrained weights loaded with {len(incompatibleKeys.missing_keys)} missing, "
+                  f"{len(incompatibleKeys.unexpected_keys)} unexpected keys")
+            if incompatibleKeys.missing_keys:
+                print(f"  Missing (first 5): {incompatibleKeys.missing_keys[:5]}")
+            if incompatibleKeys.unexpected_keys:
+                print(f"  Unexpected (first 5): {incompatibleKeys.unexpected_keys[:5]}")
         except Exception as e:
-            print(f"Failed loading checkpoint form {ckpt}: {e}")
+            print(f"Failed loading checkpoint from {ckpt}: {e}")
 
     def forward(self, x):
         def layer_forward(l, x):
@@ -59,4 +102,3 @@ class Backbone_VSSM(VSSM):
             return x
         
         return outs
-

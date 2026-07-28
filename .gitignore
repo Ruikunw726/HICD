@@ -58,3 +58,6 @@ result.xml
 data_test/
 outputs/
 weights/*.bin
+# Compiled CUDA extensions
+*.so
+mambacd/

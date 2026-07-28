@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 全量训练脚本 - MambaCD 层级实例级变化检测
@@ -11,11 +11,13 @@
     
     # 首次运行先准备数据 (在Windows PowerShell中运行 prepare_data.ps1)
     
-    # 训练
+    # 训练 (预训练权重和CLIP权重已自动加载)
     python MambaCD/changedetection/script/train_full.py \
         --batch_size 4 \
         --max_epochs 100 \
-        --learning_rate 1e-4
+        --learning_rate 1e-4 \
+        --use_amp
+
 """
 
 import sys
@@ -471,9 +473,11 @@ if __name__ == "__main__":
     parser.add_argument("--classes_csv", type=str, default="MambaCD/0617final/classes.csv")
 
     # 模型
-    parser.add_argument("--pretrained_weight_path", type=str, default=None,
+    parser.add_argument("--pretrained_weight_path", type=str,
+                        default="MambaCD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
                         help="VSSM 预训练权重路径")
-    parser.add_argument("--clip_weights_path", type=str, default=None,
+    parser.add_argument("--clip_weights_path", type=str,
+                        default="MambaCD/weights/open_clip_pytorch_model.bin",
                         help="CLIP 权重路径")
     parser.add_argument("--num_queries", type=int, default=34)
 
