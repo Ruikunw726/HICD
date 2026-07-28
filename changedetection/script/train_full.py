@@ -45,6 +45,8 @@ from MambaCD.changedetection.models.class_mapping import (
     CLIP_TEXT_PROMPTS,
 )
 
+from MambaCD.changedetection.script.metrics import InstanceMetrics, compute_model_stats
+
 from osgeo import gdal
 gdal.UseExceptions()
 
@@ -301,6 +303,17 @@ class Trainer:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
         print(f"Model parameters: {total_params:.2f}M")
 
+        # Model complexity (FLOPs)
+        model_stats = compute_model_stats(self.model, device=self.device)
+        for k, v in model_stats.items():
+            print(f'  {k}: {v:.2f}' if isinstance(v, float) else f'  {k}: {v}')
+
+        # Metrics tracker
+        self.metrics = InstanceMetrics(
+            num_targets=NUM_TARGETS, num_states=NUM_STATES,
+            target_names=TARGET_NAMES, state_names=STATE_NAMES,
+        )
+
         # 损失函数
         self.criterion = HierarchicalInstanceLoss(
             num_targets=NUM_TARGETS, num_states=NUM_STATES,
@@ -326,6 +339,7 @@ class Trainer:
         self.save_dir = os.path.join(args.output_dir, args.exp_name)
         os.makedirs(self.save_dir, exist_ok=True)
         self.best_loss = float('inf')
+        self.best_map = 0.0
 
         # 恢复训练
         self.start_epoch = 0
@@ -339,12 +353,14 @@ class Trainer:
         self.optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         self.start_epoch = ckpt.get('epoch', 0)
         self.best_loss = ckpt.get('val_loss', float('inf'))
+        self.best_map = ckpt.get('best_map', 0.0)
         print(f"  Epoch: {self.start_epoch}, Best loss: {self.best_loss:.4f}")
 
     def train_epoch(self, epoch):
         self.model.train()
         total_loss = 0
         num_batches = 0
+        epoch_start = time.time()
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.args.max_epochs}")
 
         for batch in pbar:
@@ -377,16 +393,20 @@ class Trainer:
                 'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
             })
 
+        epoch_time = time.time() - epoch_start
+        self.metrics.train_time += epoch_time
+        self.metrics.train_samples += len(self.train_dataset)
         return total_loss / max(num_batches, 1)
-
     @torch.no_grad()
     def validate(self):
         self.model.eval()
         if self.val_loader is None:
             return float('inf')
 
+        self.metrics.reset()
         total_loss = 0
         num_batches = 0
+        infer_start = time.time()
 
         for batch in tqdm(self.val_loader, desc="Validating"):
             pre_imgs = batch['pre_img'].to(self.device)
@@ -401,11 +421,17 @@ class Trainer:
                     outputs, gt_boxes_list, gt_target_list, gt_state_list
                 )
 
+            self.metrics.update(outputs, gt_boxes_list, gt_target_list, gt_state_list)
             total_loss += loss.item()
             num_batches += 1
 
-        return total_loss / max(num_batches, 1)
+        self.metrics.infer_time = time.time() - infer_start
+        self.metrics.infer_samples = len(self.val_dataset)
 
+        val_loss = total_loss / max(num_batches, 1)
+        self.val_results = self.metrics.compute()
+        self.val_results['val_loss'] = val_loss
+        return val_loss
     def train(self):
         print(f"\n{'='*60}")
         print(f"Starting training: {self.args.max_epochs} epochs")
@@ -415,16 +441,35 @@ class Trainer:
         print(f"  Save dir: {self.save_dir}")
         print(f"{'='*60}\n")
 
+        # CSV log
+        log_path = os.path.join(self.save_dir, "train_log.csv")
+        log_header = "epoch,train_loss,val_loss,mAP@0.5,mAP@0.75,mAP@[0.5:0.95],target_F1,state_F1,train_sps,infer_sps\n"
+        if not os.path.exists(log_path):
+            with open(log_path, 'w') as f:
+                f.write(log_header)
+
         for epoch in range(self.start_epoch, self.args.max_epochs):
             train_loss = self.train_epoch(epoch)
             val_loss = self.validate()
+            r = self.val_results
 
             print(f"\nEpoch {epoch+1}/{self.args.max_epochs} — "
                   f"Train: {train_loss:.4f} | Val: {val_loss:.4f}")
+            print(self.metrics.format_results(r))
 
-            # 保存最优
-            if val_loss < self.best_loss:
-                self.best_loss = val_loss
+            # Log to CSV
+            with open(log_path, 'a') as f:
+                f.write(f"{epoch+1},{train_loss:.6f},{val_loss:.6f},"
+                        f"{r.get('mAP@0.5', 0):.6f},{r.get('mAP@0.75', 0):.6f},"
+                        f"{r.get('mAP@[0.5:0.95]', 0):.6f},"
+                        f"{r.get('target_macro_f1', 0):.6f},{r.get('state_macro_f1', 0):.6f},"
+                        f"{r.get('train_samples_per_sec', 0):.2f},"
+                        f"{r.get('infer_samples_per_sec', 0):.2f}\n")
+
+            # Save best (by mAP@0.5 or val_loss)
+            current_map = r.get('mAP@0.5', 0)
+            if current_map > self.best_map:
+                self.best_map = current_map
                 save_path = os.path.join(self.save_dir, "best.pth")
                 torch.save({
                     'epoch': epoch + 1,
@@ -432,10 +477,11 @@ class Trainer:
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'val_loss': val_loss,
                     'train_loss': train_loss,
+                    'metrics': {k: float(v) for k, v in r.items() if isinstance(v, (int, float, np.floating))},
                 }, save_path)
-                print(f"  → Best model saved: {save_path}")
+                print(f"  -> Best model saved (mAP@0.5={current_map:.4f}): {save_path}")
 
-            # 定期保存
+            # Periodic save
             if (epoch + 1) % self.args.save_freq == 0:
                 save_path = os.path.join(self.save_dir, f"epoch{epoch+1}.pth")
                 torch.save({
@@ -443,67 +489,22 @@ class Trainer:
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'val_loss': val_loss,
+                    'metrics': {k: float(v) for k, v in r.items() if isinstance(v, (int, float, np.floating))},
                 }, save_path)
 
-            # 保存最新
+            # Save latest
             save_path = os.path.join(self.save_dir, "latest.pth")
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 'val_loss': val_loss,
-                'best_loss': self.best_loss,
+                'best_map': self.best_map,
+                'metrics': {k: float(v) for k, v in r.items() if isinstance(v, (int, float, np.floating))},
             }, save_path)
 
-        print(f"\nTraining complete. Best val loss: {self.best_loss:.4f}")
-        print(f"Best model: {os.path.join(self.save_dir, 'best.pth')}")
-
-
-# =====================================================================
-# Main
-# =====================================================================
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MambaCD Full Training")
-
-    # 数据
-    parser.add_argument("--data_dir", type=str, default="MambaCD/0617final",
-                        help="0617final 数据集根目录")
-    parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
-                        help="训练场景，逗号分隔")
-    parser.add_argument("--classes_csv", type=str, default="MambaCD/0617final/classes.csv")
-
-    # 模型
-    parser.add_argument("--pretrained_weight_path", type=str,
-                        default="MambaCD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
-                        help="VSSM 预训练权重路径")
-    parser.add_argument("--clip_weights_path", type=str,
-                        default="MambaCD/weights/open_clip_pytorch_model.bin",
-                        help="CLIP 权重路径")
-    parser.add_argument("--num_queries", type=int, default=34)
-
-    # 训练
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--crop_size", type=int, default=512)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.05)
-    parser.add_argument("--max_epochs", type=int, default=100)
-    parser.add_argument("--max_iters", type=int, default=None)
-    parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--use_amp", action="store_true", help="混合精度训练")
-    parser.add_argument("--grad_clip", type=float, default=1.0)
-    parser.add_argument("--save_freq", type=int, default=10)
-
-    # 输出
-    parser.add_argument("--output_dir", type=str, default="MambaCD/outputs")
-    parser.add_argument("--exp_name", type=str, default="full_train")
-    parser.add_argument("--resume", type=str, default=None, help="恢复训练的检查点路径")
-
-    # VSSM config
-    parser.add_argument("--cfg", type=str,
-                        default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
-    parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
-
-    args = parser.parse_args()
-
-    trainer = Trainer(args)
-    trainer.train()
+        print(f"\nTraining complete.")
+        print(f"  Best val loss: {self.best_loss:.4f}")
+        print(f"  Best mAP@0.5: {self.best_map:.4f}")
+        print(f"  Log: {log_path}")
+        print(f"  Best model: {os.path.join(self.save_dir, 'best.pth')}")
