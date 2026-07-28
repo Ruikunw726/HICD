@@ -52,3 +52,9 @@ flask_server*.py
 record.txt
 result.xml
 *.docx
+
+# Dataset (too large for GitHub)
+0617final/
+data_test/
+outputs/
+weights/*.bin

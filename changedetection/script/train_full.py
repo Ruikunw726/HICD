@@ -464,11 +464,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MambaCD Full Training")
 
     # 数据
-    parser.add_argument("--data_dir", type=str, default="D:/CD/0617final",
+    parser.add_argument("--data_dir", type=str, default="MambaCD/0617final",
                         help="0617final 数据集根目录")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
                         help="训练场景，逗号分隔")
-    parser.add_argument("--classes_csv", type=str, default="D:/CD/0617final/classes.csv")
+    parser.add_argument("--classes_csv", type=str, default="MambaCD/0617final/classes.csv")
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str, default=None,

@@ -1,4 +1,4 @@
-﻿# MambaCD - 层级实例级变化检测
+# MambaCD - 层级实例级变化检测
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -48,4 +48,11 @@ COPY . /workspace/MambaCD
 #                 local_dir='/workspace/MambaCD/weights')
 # "
 
-CMD ["/bin/bash"]
+# 默认训练命令
+CMD ["bash", "-c", "source /root/miniconda/bin/activate mamba && \
+     python MambaCD/changedetection/script/train_full.py \
+     --data_dir /workspace/MambaCD/0617final \
+     --scenes 'Airports,Ports,Urban-Rural Areas' \
+     --clip_weights_path /workspace/MambaCD/weights/open_clip_pytorch_model.bin \
+     --cfg MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml \
+     --batch_size 4 --max_epochs 100 --use_amp --num_workers 4"]
