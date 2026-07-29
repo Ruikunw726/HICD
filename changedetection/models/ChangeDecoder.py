@@ -1,4 +1,4 @@
-import torch
+﻿import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from MambaCD.classification.models.vmamba import VSSM, LayerNorm2d, VSSBlock, Permute
@@ -243,7 +243,7 @@ class ChangeDecoder(nn.Module):
         p1 = self._upsample_add(p2, p1)
         p1 = self.smooth_layer_1(p1)
 
-        return p1
+        return p1, p2, p3  # V2: multi-scale output
 
    
 class ResBlock(nn.Module):

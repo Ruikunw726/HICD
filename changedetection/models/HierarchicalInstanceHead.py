@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Hierarchical Instance Detection Head
 
@@ -19,8 +19,11 @@ Hierarchical Instance Detection Head
         state_head    → (B, Q, 6)        变化状态 logits (有效性掩码)
 """
 import math
+import numpy as np
 import torch
+import numpy as np
 import torch.nn as nn
+import numpy as np
 import torch.nn.functional as F
 
 from MambaCD.changedetection.models.class_mapping import (
@@ -105,6 +108,40 @@ class ScaleAwareQueryEmbedding(nn.Module):
 # =====================================================================
 # 实例级检测头
 # =====================================================================
+
+class PositionalEncoding2D(nn.Module):
+    """2D sinusoidal positional encoding for feature maps."""
+    def __init__(self, d_model, max_len=256):
+        super().__init__()
+        self.d_model = d_model
+        
+    def forward(self, x):
+        """x: (B, C, H, W) -> adds positional encoding."""
+        B, C, H, W = x.shape
+        device = x.device
+        
+        pe = torch.zeros(C, H, W, device=device)
+        
+        # Half channels for y, half for x
+        half = C // 2
+        
+        # Y encoding
+        y_pos = torch.arange(H, device=device).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, half, 2, device=device).float() * 
+                           -(np.log(10000.0) / half))
+        pe[0:half:2, :, :] = torch.sin(y_pos * div_term).unsqueeze(2).expand(-1, -1, W)
+        pe[1:half:2, :, :] = torch.cos(y_pos * div_term).unsqueeze(2).expand(-1, -1, W)
+        
+        # X encoding
+        x_pos = torch.arange(W, device=device).unsqueeze(0).float()
+        div_term = torch.exp(torch.arange(0, half, 2, device=device).float() * 
+                           -(np.log(10000.0) / half))
+        pe[half::2, :, :] = torch.sin(x_pos * div_term).unsqueeze(1).expand(-1, H, -1)
+        pe[half+1::2, :, :] = torch.cos(x_pos * div_term).unsqueeze(1).expand(-1, H, -1)
+        
+        return x + pe.unsqueeze(0)
+
+
 class HierarchicalInstanceHead(nn.Module):
     """
     层级实例检测头: FPN → Transformer Decoder → 分层预测
@@ -131,6 +168,8 @@ class HierarchicalInstanceHead(nn.Module):
         self.num_aux_layers = num_aux_layers
 
         # ── FPN ──
+        # V2: 2D sinusoidal positional encoding
+        self.pos_enc = PositionalEncoding2D(visual_dim)
         self.fpn = ScaleFPN(in_channels=visual_dim, out_channels=visual_dim)
 
         # ── 多尺度特征投影 ──
@@ -230,7 +269,7 @@ class HierarchicalInstanceHead(nn.Module):
         pred_state = pred_state + (1 - valid_mask).clamp(min=1e-6).log()
         return pred_state
 
-    def forward(self, pixel_features, text_features=None):
+    def forward(self, pixel_features, text_features=None, multi_scale=False):
         """
         Args:
             pixel_features: (B, 128, H/4, W/4)
@@ -246,8 +285,19 @@ class HierarchicalInstanceHead(nn.Module):
         """
         B = pixel_features.shape[0]
 
-        # 1. FPN 多尺度
-        scales = self.fpn(pixel_features)
+        # V2: Handle multi-scale input from ChangeDecoder
+        if multi_scale and isinstance(pixel_features, (list, tuple)):
+            # pixel_features = (p1, p2, p3) from ChangeDecoder
+            scales = []
+            for feat in pixel_features:
+                scales.append(self.pos_enc(feat))  # Add positional encoding
+            # Update FPN to match input scales
+            # Use p1 as-is, downsample p2->p3 if needed
+        else:
+            # Legacy single-scale input
+            pixel_features = self.pos_enc(pixel_features)
+            scales = self.fpn(pixel_features)
+
 
         # 2. 展平所有尺度
         memories = []

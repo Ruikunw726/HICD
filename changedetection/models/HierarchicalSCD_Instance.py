@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 HierarchicalSCDInstance — 层级实例级语义变化检测完整模型
 
@@ -132,16 +132,25 @@ class HierarchicalSCDInstance(nn.Module):
         post_features = self.encoder(post_data)
 
         # 2. 变化检测特征融合
-        pixel_features = self.decoder(pre_features, post_features)  # (B,128,H/4,W/4)
+        # 2. 变化检测特征融合 (V2: multi-scale)
+        pixel_features = self.decoder(pre_features, post_features)  # (p1, p2, p3)
+        p1, p2, p3 = pixel_features
 
         # 3. CLIP 文本编码
         text_features = self.clip_text_encoder(CLIP_TEXT_PROMPTS)    # (16,512)
 
         # 4. 文本-视觉交叉注意力增强
-        enhanced = self.cross_attn(pixel_features, text_features)    # (B,128,H/4,W/4)
+        # 4. 文本-视觉交叉注意力增强 (V2: apply to each scale)
+        enhanced_p1 = self.cross_attn(p1, text_features)
+        enhanced_p2 = self.cross_attn(p2, text_features)
+        enhanced_p3 = self.cross_attn(p3, text_features)
 
         # 5. 实例检测
-        outputs = self.instance_head(enhanced, text_features)
+        # 5. 实例检测 (V2: multi-scale)
+        outputs = self.instance_head(
+            (enhanced_p1, enhanced_p2, enhanced_p3),
+            text_features, multi_scale=True
+        )
 
         return outputs
 
