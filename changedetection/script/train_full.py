@@ -387,10 +387,11 @@ class Trainer:
 
             scaled_loss = loss / accum_steps
             self.scaler.scale(scaled_loss).backward()
-            if self.args.grad_clip > 0:
-                self.scaler.unscale_(self.optimizer)
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
+
             if (batch_idx + 1) % accum_steps == 0:
+                if self.args.grad_clip > 0:
+                    self.scaler.unscale_(self.optimizer)
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.optimizer.zero_grad()
