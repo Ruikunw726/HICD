@@ -60,7 +60,6 @@ def win_to_wsl(path):
     return path
 
 
-
 # =====================================================================
 # Dataset (支持扁平目录结构)
 # =====================================================================
@@ -327,10 +326,15 @@ class Trainer:
         )
 
         # 学习率调度
+        # Learning rate: linear warmup (5 epochs) + cosine decay
         total_steps = len(self.train_loader) * args.max_epochs
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=total_steps, eta_min=1e-7
-        )
+        warmup_steps = len(self.train_loader) * 5  # 5 epochs warmup
+        self.total_steps = total_steps
+        self.warmup_steps = warmup_steps
+        self.base_lr = args.learning_rate
+
+
+
 
         # 混合精度
         self.scaler = torch.amp.GradScaler(enabled=args.use_amp)
@@ -363,14 +367,17 @@ class Trainer:
         epoch_start = time.time()
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.args.max_epochs}")
 
-        for batch in pbar:
+        self.optimizer.zero_grad()
+        accum_steps = getattr(self.args, 'grad_accum', 1)
+        for batch_idx, batch in enumerate(pbar):
             pre_imgs = batch['pre_img'].to(self.device)
             post_imgs = batch['post_img'].to(self.device)
             gt_boxes_list = [b.to(self.device) for b in batch['gt_boxes']]
             gt_target_list = [t.to(self.device) for t in batch['gt_target']]
             gt_state_list = [s.to(self.device) for s in batch['gt_state']]
 
-            self.optimizer.zero_grad()
+
+
 
             with torch.amp.autocast(device_type='cuda', enabled=self.args.use_amp):
                 outputs = self.model(pre_imgs, post_imgs)
@@ -378,19 +385,30 @@ class Trainer:
                     outputs, gt_boxes_list, gt_target_list, gt_state_list
                 )
 
-            self.scaler.scale(loss).backward()
+            scaled_loss = loss / accum_steps
+            self.scaler.scale(scaled_loss).backward()
             if self.args.grad_clip > 0:
                 self.scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.scheduler.step()
+            if (batch_idx + 1) % accum_steps == 0:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.optimizer.zero_grad()
+                self.global_step = getattr(self, 'global_step', 0) + 1
+                if self.global_step < self.warmup_steps:
+                    lr = self.base_lr * self.global_step / self.warmup_steps
+                else:
+                    progress = (self.global_step - self.warmup_steps) / max(self.total_steps - self.warmup_steps, 1)
+                    lr = self.base_lr * 0.5 * (1 + np.cos(np.pi * progress))
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = lr
+
 
             total_loss += loss.item()
             num_batches += 1
             pbar.set_postfix({
                 'loss': f"{loss.item():.4f}",
-                'lr': f"{self.scheduler.get_last_lr()[0]:.2e}"
+                'lr': f"{self.optimizer.param_groups[0]['lr']:.2e}"
             })
 
         epoch_time = time.time() - epoch_start
@@ -534,12 +552,13 @@ if __name__ == "__main__":
     # 训练
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--crop_size", type=int, default=512)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--weight_decay", type=float, default=0.05)
     parser.add_argument("--max_epochs", type=int, default=100)
     parser.add_argument("--max_iters", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--use_amp", action="store_true", help="混合精度训练")
+    parser.add_argument("--grad_accum", type=int, default=1, help="梯度累积步数 (等效增大batch_size)")
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--save_freq", type=int, default=10)
 
