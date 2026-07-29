@@ -551,7 +551,7 @@ if __name__ == "__main__":
     parser.add_argument("--clip_weights_path", type=str,
                         default="MambaCD/weights/open_clip_pytorch_model.bin",
                         help="CLIP 权重路径")
-    parser.add_argument("--num_queries", type=int, default=34)
+    parser.add_argument("--num_queries", type=int, default=17)
 
     # 训练
     parser.add_argument("--batch_size", type=int, default=4)
