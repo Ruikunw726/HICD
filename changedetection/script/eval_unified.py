@@ -35,6 +35,32 @@ from osgeo import gdal
 gdal.UseExceptions()
 
 
+
+# =====================================================================
+# train_id mapping from classes.csv
+# (target_idx, state_idx) -> train_id
+# target_idx: 0-15 (TARGET_NAMES), state_idx: 0-5 (STATE_NAMES)
+# =====================================================================
+TARGET_STATE_TO_TRAIN_ID = {
+    (0,0):1, (0,1):2,
+    (1,0):3, (1,1):4, (1,2):5, (1,3):6, (1,4):7,
+    (2,0):8, (2,1):9, (2,2):10, (2,3):11, (2,4):12,
+    (3,0):13, (3,1):14, (3,2):15, (3,3):16, (3,4):17,
+    (4,0):18, (4,1):19, (4,2):20, (4,3):21, (4,4):22,
+    (5,0):23, (5,1):24, (5,2):25, (5,3):26, (5,4):27,
+    (6,0):28, (6,1):29, (6,2):30, (6,3):31, (6,4):32,
+    (7,0):33, (7,1):34, (7,2):35, (7,3):36, (7,4):37,
+    (8,0):38, (8,1):39, (8,2):40, (8,3):41, (8,4):42,
+    (9,0):43, (9,1):44, (9,2):45, (9,3):46, (9,4):47,
+    (10,0):48, (10,1):49, (10,2):50, (10,3):51, (10,4):52,
+    (11,0):53, (11,1):54, (11,2):55, (11,3):56,
+    (12,0):57, (12,1):58, (12,2):59, (12,3):60, (12,5):61,
+    (13,0):62, (13,1):63, (13,2):64, (13,3):65, (13,5):66,
+    (14,0):67,
+    (15,0):68,
+}
+
+TRAIN_ID_TO_TARGET_STATE = {v: k for k, v in TARGET_STATE_TO_TRAIN_ID.items()}
 def load_gt_instances(json_path, split="test"):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -216,6 +242,87 @@ class ICDEvaluator:
         except:
             return None
 
+    def evaluate_scd(self, pred_dir, gt_data, pred_format="change_map",
+                     pre_dir=None, post_dir=None):
+        """Evaluate SCD (Semantic Change Detection) predictions.
+        
+        SCD outputs per-pixel semantic labels. We convert to instance-level:
+        For each GT instance bbox, check if predicted pixels match target type.
+        
+        Args:
+            pred_dir: directory with prediction maps
+            gt_data: GT instances
+            pred_format: "change_map" (single map with change classes)
+                        or "pre_post" (two separate semantic maps)
+            pre_dir, post_dir: directories for pre/post maps (if pred_format="pre_post")
+        """
+        res_per_t = {t:{'tp':0,'fp':0,'fn':0,'n_gt':0} for t in self.iou_thresholds}
+        
+        for fname, gt in tqdm(gt_data.items(), desc="SCD eval"):
+            if pred_format == "change_map":
+                pred_path = self._find_pred(pred_dir, fname)
+                if not pred_path:
+                    continue
+                pred_map = self._load_map(pred_path)
+                if pred_map is None:
+                    continue
+            else:
+                # pre_post format
+                pre_path = self._find_pred(pre_dir, fname)
+                post_path = self._find_pred(post_dir, fname)
+                if not pre_path or not post_path:
+                    continue
+                pre_map = self._load_map(pre_path)
+                post_map = self._load_map(post_path)
+                if pre_map is None or post_map is None:
+                    continue
+                # Change = pixels where pre != post AND post != 0 (background)
+                pred_map = np.zeros_like(post_map)
+                changed = (pre_map != post_map) & (post_map > 0)
+                pred_map[changed] = post_map[changed]
+            
+            H, W = pred_map.shape[:2]
+            
+            for i in range(len(gt['boxes'])):
+                is_changed = gt['states'][i] in self.change_state_ids
+                gt_target = gt['targets'][i]  # 0-15
+                
+                subs = split_large_instance(gt['boxes'][i], H, W,
+                    self.large_area_thresh, self.n_sub_regions)
+                
+                for sub in subs:
+                    gt_mask = box_to_mask(sub, H, W)
+                    
+                    # For change_map: pixels with matching target class
+                    # Target classes in SCD maps are typically 1-indexed (0=background)
+                    pred_class_mask = (pred_map == (gt_target + 1)).astype(np.uint8)
+                    
+                    iou = mask_iou(gt_mask, pred_class_mask)
+                    
+                    for t in self.iou_thresholds:
+                        if is_changed:
+                            res_per_t[t]['n_gt'] += 1
+                            if iou >= t:
+                                res_per_t[t]['tp'] += 1
+                            else:
+                                res_per_t[t]['fn'] += 1
+                        elif iou >= t:
+                            res_per_t[t]['fp'] += 1
+        
+        results = {}
+        for t in self.iou_thresholds:
+            r = res_per_t[t]
+            p = r['tp']/max(r['tp']+r['fp'],1)
+            rec = r['tp']/max(r['n_gt'],1)
+            f1 = 2*p*rec/max(p+rec,1e-6)
+            results[t] = {'tp':r['tp'],'fp':r['fp'],'fn':r['fn'],'n_gt':r['n_gt'],
+                          'precision':p,'recall':rec,'f1':f1}
+        aps = [results[t]['f1'] for t in self.iou_thresholds]
+        results['mAP'] = np.mean(aps)
+        results['mAP_50'] = results.get(0.5,{}).get('f1',0)
+        results['mAP_75'] = results.get(0.75,{}).get('f1',0)
+        return results
+
 
 # =====================================================================
 # Per-class Evaluation
@@ -374,9 +481,14 @@ def print_per_class(tgt_res, st_res):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unified ICD Evaluation")
-    parser.add_argument("--mode", type=str, default="instance", choices=["instance","pixel"])
+    parser.add_argument("--mode", type=str, default="instance", choices=["instance","pixel","scd"])
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--pred_dir", type=str, default=None)
+    parser.add_argument("--pred_format", type=str, default="change_map",
+                        choices=["change_map","pre_post"],
+                        help="SCD prediction format")
+    parser.add_argument("--pre_dir", type=str, default=None, help="Pre-change map dir (for pre_post)")
+    parser.add_argument("--post_dir", type=str, default=None, help="Post-change map dir (for pre_post)")
     parser.add_argument("--data_dir", type=str, default="MambaCD/0617final")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas")
     parser.add_argument("--cfg", type=str, default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
@@ -452,6 +564,13 @@ if __name__ == "__main__":
             print("ERROR: --pred_dir required"); sys.exit(1)
         icd = evaluator.evaluate_pixel(args.pred_dir, all_gt)
         print_icd(icd, "Pixel Model — ICD Metrics")
+
+    elif args.mode == "scd":
+        if not args.pred_dir:
+            print("ERROR: --pred_dir required for scd mode"); sys.exit(1)
+        icd = evaluator.evaluate_scd(args.pred_dir, all_gt,
+            pred_format=args.pred_format, pre_dir=args.pre_dir, post_dir=args.post_dir)
+        print_icd(icd, "SCD Model — ICD Metrics")
 
     if args.output_json:
         save = {str(k):v for k,v in icd.items() if isinstance(v,dict)}
