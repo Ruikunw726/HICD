@@ -27,16 +27,16 @@ import time
 from PIL import Image
 import numpy as np
 
-from MambaCD.changedetection.configs.config import get_config
+from HICD.changedetection.configs.config import get_config
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from MambaCD.changedetection.datasets.make_data_loader_pure import make_data_loader,DamageDataset_infer
-from MambaCD.changedetection.utils_func.metrics import Evaluator
-from MambaCD.changedetection.models.STMambaBDA import STMambaBDA
+from HICD.changedetection.datasets.make_data_loader_pure import make_data_loader,DamageDataset_infer
+from HICD.changedetection.utils_func.metrics import Evaluator
+from HICD.changedetection.models.STMambaBDA import STMambaBDA
 
 import imageio
 import numpy as np
@@ -381,7 +381,7 @@ def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[4]
     
     parser = argparse.ArgumentParser(description="Inference on test dataset")
-    parser.add_argument('--cfg', type=str, default=r'./MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml')
+    parser.add_argument('--cfg', type=str, default=r'./HICD/changedetection/configs/vssm1/vssm_small_224.yaml')
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -410,7 +410,7 @@ def main():
     parser.add_argument('--slice', type=str, default=None)
     
     parser.add_argument('--resume', type=str,
-        # default=r'E:/baidu_download/Changemamba/MambaCD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth'
+        # default=r'E:/baidu_download/Changemamba/HICD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth'
         default='/home/user/桌面/399.pth'
     )
     parser.add_argument('--learning_rate', type=float, default=1e-4)
@@ -444,7 +444,7 @@ def main():
             [51.290000, 25.090000],  # 左下
             [51.335000, 25.090000]   # 右下
         ]  
-        from MambaCD.func.crop import crop2
+        from HICD.func.crop import crop2
         if args.slice is not None:
             crop_points = json.loads(args.slice)
         else:
@@ -470,7 +470,7 @@ def main():
 
     try:
         # 2. 执行配准
-        from MambaCD.func.MapGlue_main.test import register_images
+        from HICD.func.MapGlue_main.test import register_images
         
         temp_pre,temp_post=register_images(
             img1_path=args.input_data2,
@@ -478,7 +478,7 @@ def main():
             output_path=temp_registered_path, # 保存到临时路径
             num_keypoints=512,
             grid_step_deg=0.003,
-            model_path='./MambaCD/func/MapGlue_main/weights/fastmapglue_model.pt',
+            model_path='./HICD/func/MapGlue_main/weights/fastmapglue_model.pt',
             generate_chessboard=False
         )     
         # 3. 替换输入路径
@@ -502,7 +502,7 @@ def main():
     #         [51.290000, 25.090000],  # 左下
     #         [51.335000, 25.090000]   # 右下
     #     ]  
-    #     from MambaCD.func.crop import crop2
+    #     from HICD.func.crop import crop2
     #     if args.slice is not None:
     #         crop_points = json.loads(args.slice)
     #     else:

@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.models.class_mapping import (
     NUM_TARGETS, NUM_STATES, TARGET_VALID_STATES,
 )
 

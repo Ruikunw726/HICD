@@ -32,7 +32,7 @@ from scipy import ndimage
 
 # 导入统一类别定义
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
     TARGET_VALID_STATES, train_id_to_target_state,
 )

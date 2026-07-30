@@ -22,16 +22,16 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from collections import Counter
-from MambaCD.changedetection.datasets.label_change import *
+from HICD.changedetection.datasets.label_change import *
 from tqdm import tqdm
-# from MambaCD.func.tif_to_json import tif_json
-from MambaCD.func.tif_to_xml import tif_xml_single
+# from HICD.func.tif_to_json import tif_json
+from HICD.func.tif_to_xml import tif_xml_single
 import torch
 from osgeo import gdal
 
 gdal.UseExceptions()
 
-import MambaCD.changedetection.datasets.imutils as imutils
+import HICD.changedetection.datasets.imutils as imutils
 
 
 def img_loader(path):
@@ -550,8 +550,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='test')
     parser.add_argument('--max_iters', type=int, default=None)
     parser.add_argument('--type', type=str, default='test')
-    parser.add_argument('--train_dataset_path', type=str, default=r'E:/MambaCD/data_test')
-    parser.add_argument('--train_data_list_path', type=str, default=r'E:/MambaCD/data_test/test.txt')
+    parser.add_argument('--train_dataset_path', type=str, default=r'E:/HICD/data_test')
+    parser.add_argument('--train_data_list_path', type=str, default=r'E:/HICD/data_test/test.txt')
     parser.add_argument('--train_data_name_list', type=list)
     parser.add_argument('--shuffle', type=bool, default=True)
     parser.add_argument('--batch_size', type=int, default=1)

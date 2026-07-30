@@ -26,7 +26,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
     CLIP_TEXT_PROMPTS, TARGET_VALID_STATES, get_valid_state_mask,
 )

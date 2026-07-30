@@ -27,10 +27,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from tqdm import tqdm
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-from MambaCD.changedetection.configs.config import get_config
-from MambaCD.changedetection.datasets.imutils import normalize_img
-from MambaCD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
-from MambaCD.changedetection.models.class_mapping import TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES
+from HICD.changedetection.configs.config import get_config
+from HICD.changedetection.datasets.imutils import normalize_img
+from HICD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
+from HICD.changedetection.models.class_mapping import TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES
 from osgeo import gdal
 gdal.UseExceptions()
 
@@ -489,17 +489,17 @@ if __name__ == "__main__":
                         help="SCD prediction format")
     parser.add_argument("--pre_dir", type=str, default=None, help="Pre-change map dir (for pre_post)")
     parser.add_argument("--post_dir", type=str, default=None, help="Post-change map dir (for pre_post)")
-    parser.add_argument("--data_dir", type=str, default="MambaCD/0617final")
+    parser.add_argument("--data_dir", type=str, default="HICD/0617final")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas")
-    parser.add_argument("--cfg", type=str, default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+    parser.add_argument("--cfg", type=str, default="HICD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--crop_size", type=int, default=512)
     parser.add_argument("--num_queries", type=int, default=17)
     parser.add_argument("--score_thresh", type=float, default=0.3)
     parser.add_argument("--large_area_thresh", type=int, default=5000)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--clip_weights_path", type=str, default="MambaCD/weights/open_clip_pytorch_model.bin")
-    parser.add_argument("--pretrained_weight_path", type=str, default="MambaCD/weights/vssmtiny_dp01_ckpt_epoch_292.pth")
+    parser.add_argument("--clip_weights_path", type=str, default="HICD/weights/open_clip_pytorch_model.bin")
+    parser.add_argument("--pretrained_weight_path", type=str, default="HICD/weights/vssmtiny_dp01_ckpt_epoch_292.pth")
     parser.add_argument("--output_json", type=str, default=None)
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
     args = parser.parse_args()

@@ -32,7 +32,7 @@
 ## 项目结构
 
 ```
-MambaCD/
+HICD/
 ├── 0617final/                 # 数据集 (含 instances.json)
 ├── weights/                   # 预训练权重
 │   ├── vssm1_small_0229s_ckpt_epoch_240.pth  # VSSM-small backbone (V3 默认)
@@ -98,11 +98,11 @@ python changedetection/datasets/pixel_to_instance_0617final.py \
 ### 训练
 
 ```bash
-cd /path/to/MambaCD/..
+cd /path/to/HICD/..
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
-python MambaCD/changedetection/script/train_full.py \
-    --data_dir MambaCD/0617final \
+python HICD/changedetection/script/train_full.py \
+    --data_dir HICD/0617final \
     --scenes "Airports,Ports,Urban-Rural Areas" \
     --batch_size 4 --grad_accum 4 \
     --learning_rate 3e-4 --max_epochs 100 \
@@ -129,16 +129,16 @@ python MambaCD/changedetection/script/train_full.py \
 
 ```bash
 # 评估实例级模型
-python MambaCD/changedetection/script/eval_unified.py \
+python HICD/changedetection/script/eval_unified.py \
     --mode instance \
-    --checkpoint MambaCD/outputs/experiment_1/best.pth
+    --checkpoint HICD/outputs/experiment_1/best.pth
 
 # 评估像素级 BCD 方法 (二值预测图)
-python MambaCD/changedetection/script/eval_unified.py \
+python HICD/changedetection/script/eval_unified.py \
     --mode pixel --pred_dir /path/to/binary_predictions
 
 # 评估 SCD 方法 (语义变化图, 像素值 = train_id)
-python MambaCD/changedetection/script/eval_unified.py \
+python HICD/changedetection/script/eval_unified.py \
     --mode scd --pred_dir /path/to/scd_predictions
 ```
 
@@ -153,9 +153,9 @@ docker save mambacd:latest | gzip > mambacd.tar.gz
 
 # 服务器运行
 docker run --gpus all \
-    -v /data/0617final:/workspace/MambaCD/0617final \
-    -v /data/weights:/workspace/MambaCD/weights \
-    -v /data/outputs:/workspace/MambaCD/outputs \
+    -v /data/0617final:/workspace/HICD/0617final \
+    -v /data/weights:/workspace/HICD/weights \
+    -v /data/outputs:/workspace/HICD/outputs \
     mambacd:latest
 ```
 

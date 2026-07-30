@@ -193,9 +193,9 @@ def process_dataset(data_dir, output_path, min_area=50):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str,
-                        default=r"E:\code\MambaCD\MambaCD_0326pc\train")
+                        default=r"E:\code\HICD\HICD_0326pc\train")
     parser.add_argument("--output", type=str,
-                        default=r"E:\code\MambaCD\MambaCD_0326pc\train\instances.json")
+                        default=r"E:\code\HICD\HICD_0326pc\train\instances.json")
     parser.add_argument("--min_area", type=int, default=100)
     args = parser.parse_args()
     

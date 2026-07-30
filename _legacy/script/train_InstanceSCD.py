@@ -41,14 +41,14 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from MambaCD.changedetection.configs.config import get_config
-from MambaCD.changedetection.datasets.imutils import (
+from HICD.changedetection.configs.config import get_config
+from HICD.changedetection.datasets.imutils import (
     normalize_img, random_crop_bda, random_fliplr_bda,
     random_flipud_bda, random_rot_bda,
 )
-from MambaCD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
-from MambaCD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
+from HICD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
+from HICD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
     train_id_to_target_state,
 )

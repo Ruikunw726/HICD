@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-全量训练脚本 - MambaCD 层级实例级变化检测
+全量训练脚本 - HICD 层级实例级变化检测
 支持: Airports + Ports + Urban-Rural Areas 三个场景联合训练
 
 用法:
@@ -12,7 +12,7 @@
     # 首次运行先准备数据 (在Windows PowerShell中运行 prepare_data.ps1)
     
     # 训练 (预训练权重和CLIP权重已自动加载)
-    python MambaCD/changedetection/script/train_full.py \
+    python HICD/changedetection/script/train_full.py \
         --batch_size 4 \
         --max_epochs 100 \
         --learning_rate 1e-4 \
@@ -39,16 +39,16 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from MambaCD.changedetection.configs.config import get_config
-from MambaCD.changedetection.datasets.imutils import normalize_img
-from MambaCD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
-from MambaCD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.configs.config import get_config
+from HICD.changedetection.datasets.imutils import normalize_img
+from HICD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
+from HICD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
+from HICD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
     CLIP_TEXT_PROMPTS,
 )
 
-from MambaCD.changedetection.script.metrics import InstanceMetrics, compute_model_stats
+from HICD.changedetection.script.metrics import InstanceMetrics, compute_model_stats
 
 from osgeo import gdal
 gdal.UseExceptions()
@@ -535,21 +535,21 @@ class Trainer:
 # Main
 # =====================================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MambaCD Full Training")
+    parser = argparse.ArgumentParser(description="HICD Full Training")
 
     # 数据
-    parser.add_argument("--data_dir", type=str, default="MambaCD/0617final",
+    parser.add_argument("--data_dir", type=str, default="HICD/0617final",
                         help="0617final 数据集根目录")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
                         help="训练场景，逗号分隔")
-    parser.add_argument("--classes_csv", type=str, default="MambaCD/0617final/classes.csv")
+    parser.add_argument("--classes_csv", type=str, default="HICD/0617final/classes.csv")
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str,
-                        default="MambaCD/weights/vssm1_small_0229s_ckpt_epoch_240.pth",
+                        default="HICD/weights/vssm1_small_0229s_ckpt_epoch_240.pth",
                         help="VSSM 预训练权重路径")
     parser.add_argument("--clip_weights_path", type=str,
-                        default="MambaCD/weights/open_clip_pytorch_model.bin",
+                        default="HICD/weights/open_clip_pytorch_model.bin",
                         help="CLIP 权重路径")
     parser.add_argument("--num_queries", type=int, default=17)
 
@@ -567,13 +567,13 @@ if __name__ == "__main__":
     parser.add_argument("--save_freq", type=int, default=10)
 
     # 输出
-    parser.add_argument("--output_dir", type=str, default="MambaCD/outputs")
+    parser.add_argument("--output_dir", type=str, default="HICD/outputs")
     parser.add_argument("--exp_name", type=str, default="full_train")
     parser.add_argument("--resume", type=str, default=None, help="恢复训练的检查点路径")
 
     # VSSM config
     parser.add_argument("--cfg", type=str,
-                        default="MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml")
+                        default="HICD/changedetection/configs/vssm1/vssm_small_224.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()

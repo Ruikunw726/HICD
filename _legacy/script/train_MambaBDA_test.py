@@ -33,18 +33,18 @@ import time
 
 import numpy as np
 
-from MambaCD.changedetection.configs.config import get_config
+from HICD.changedetection.configs.config import get_config
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from MambaCD.changedetection.datasets.make_data_loader_pure import make_data_loader,DamageDataset_train
-from MambaCD.changedetection.utils_func.metrics import Evaluator
-from MambaCD.changedetection.models.STMambaBDA import STMambaBDA
+from HICD.changedetection.datasets.make_data_loader_pure import make_data_loader,DamageDataset_train
+from HICD.changedetection.utils_func.metrics import Evaluator
+from HICD.changedetection.models.STMambaBDA import STMambaBDA
 
-import MambaCD.changedetection.utils_func.lovasz_loss as L
+import HICD.changedetection.utils_func.lovasz_loss as L
 
 
 class Trainer(object):
@@ -306,7 +306,7 @@ class Trainer(object):
 
 def main():
     parser = argparse.ArgumentParser(description="Training on test dataset")
-    parser.add_argument('--cfg', type=str, default=r'./MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml')
+    parser.add_argument('--cfg', type=str, default=r'./HICD/changedetection/configs/vssm1/vssm_small_224.yaml')
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -338,9 +338,9 @@ def main():
     parser.add_argument('--pure_inference', type=bool, default=False)
 
     parser.add_argument('--resume', type=str,
-        # default=r'E:/baidu_download/Changemamba/MambaCD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth')
+        # default=r'E:/baidu_download/Changemamba/HICD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth')
         default=None
-        # default=r'./MambaCD/changedetection/saved_models/test/199.pth'
+        # default=r'./HICD/changedetection/saved_models/test/199.pth'
         )
     parser.add_argument('--learning_rate', type=float, default=3e-5)
     parser.add_argument('--momentum', type=float, default=0.9)

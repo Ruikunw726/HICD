@@ -1,5 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-from MambaCD.classification.models.vmamba import VSSM, LayerNorm2d
+from HICD.classification.models.vmamba import VSSM, LayerNorm2d
 
 import torch
 import torch.nn as nn

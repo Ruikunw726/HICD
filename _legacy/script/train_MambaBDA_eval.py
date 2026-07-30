@@ -33,18 +33,18 @@ import time
 
 import numpy as np
 
-from MambaCD.changedetection.configs.config import get_config
+from HICD.changedetection.configs.config import get_config
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from MambaCD.changedetection.datasets.make_data_loader_pure import DamageDataset_train
-from MambaCD.changedetection.utils_func.metrics import Evaluator
-from MambaCD.changedetection.models.STMambaBDA import STMambaBDA
+from HICD.changedetection.datasets.make_data_loader_pure import DamageDataset_train
+from HICD.changedetection.utils_func.metrics import Evaluator
+from HICD.changedetection.models.STMambaBDA import STMambaBDA
 
-import MambaCD.changedetection.utils_func.lovasz_loss as L
+import HICD.changedetection.utils_func.lovasz_loss as L
 
 
 class Trainer(object):
@@ -213,7 +213,7 @@ class Trainer(object):
 
 def main():
     parser = argparse.ArgumentParser(description="Training on test dataset")
-    parser.add_argument('--cfg', type=str, default=r'./MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml')
+    parser.add_argument('--cfg', type=str, default=r'./HICD/changedetection/configs/vssm1/vssm_small_224.yaml')
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -225,7 +225,7 @@ def main():
     parser.add_argument('--dataset', type=str, default='test')
     parser.add_argument('--type', type=str, default='train')
     
-    parser.add_argument('--input_data', type=str, default=r'D:\docker环境_2\test\MambaCD\frame_building')
+    parser.add_argument('--input_data', type=str, default=r'D:\docker环境_2\test\HICD\frame_building')
     
    
     parser.add_argument('--shuffle', type=bool, default=True)
@@ -238,16 +238,16 @@ def main():
     parser.add_argument('--cuda', type=bool, default=True)
     parser.add_argument('--max_iters', type=int, default=16000)
     parser.add_argument('--model_type', type=str, default='STMambaBDA')
-    parser.add_argument('--model_param_path', type=str, default='D:/docker环境_2/MambaCD/changedetection/results')
+    parser.add_argument('--model_param_path', type=str, default='D:/docker环境_2/HICD/changedetection/results')
     
-    parser.add_argument('--training_log', type=str, default='D:/docker环境_2/MambaCD/changedetection/saved_models/training_log.txt')
+    parser.add_argument('--training_log', type=str, default='D:/docker环境_2/HICD/changedetection/saved_models/training_log.txt')
     
     parser.add_argument('--pure_inference', type=bool, default=False)
 
     parser.add_argument('--resume', type=str,
-        # default=r'E:/baidu_download/Changemamba/MambaCD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth')
+        # default=r'E:/baidu_download/Changemamba/HICD/changedetection/saved_models/xBD/MambaBDA_Small_1743787146.0769622/37500_model.pth')
         # default=None)
-        default=r'./MambaCD/changedetection/saved_models/43.pth')
+        default=r'./HICD/changedetection/saved_models/43.pth')
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight_decay', type=float, default=5e-3)

@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from MambaCD.changedetection.models.Mamba_backbone import Backbone_VSSM
-from MambaCD.classification.models.vmamba import LayerNorm2d
-from MambaCD.changedetection.models.ChangeDecoder import ChangeDecoder
-from MambaCD.changedetection.models.CLIPTextEncoder import CLIPTextEncoder
-from MambaCD.changedetection.models.CrossAttentionFusion import TextVisualCrossAttention
-from MambaCD.changedetection.models.InstanceDetectionHead import InstanceDetectionHead
+from HICD.changedetection.models.Mamba_backbone import Backbone_VSSM
+from HICD.classification.models.vmamba import LayerNorm2d
+from HICD.changedetection.models.ChangeDecoder import ChangeDecoder
+from HICD.changedetection.models.CLIPTextEncoder import CLIPTextEncoder
+from HICD.changedetection.models.CrossAttentionFusion import TextVisualCrossAttention
+from HICD.changedetection.models.InstanceDetectionHead import InstanceDetectionHead
 
 
 class STMambaSCD_Instance(nn.Module):

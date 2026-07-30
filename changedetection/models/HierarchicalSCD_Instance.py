@@ -28,15 +28,15 @@ HierarchicalSCDInstance — 层级实例级语义变化检测完整模型
 import torch
 import torch.nn as nn
 
-from MambaCD.changedetection.models.Mamba_backbone import Backbone_VSSM
-from MambaCD.classification.models.vmamba import LayerNorm2d
-from MambaCD.changedetection.models.ChangeDecoder import ChangeDecoder
-from MambaCD.changedetection.models.CLIPTextEncoder import CLIPTextEncoder
-from MambaCD.changedetection.models.CrossAttentionFusion import TextVisualCrossAttention
-from MambaCD.changedetection.models.HierarchicalInstanceHead import (
+from HICD.changedetection.models.Mamba_backbone import Backbone_VSSM
+from HICD.classification.models.vmamba import LayerNorm2d
+from HICD.changedetection.models.ChangeDecoder import ChangeDecoder
+from HICD.changedetection.models.CLIPTextEncoder import CLIPTextEncoder
+from HICD.changedetection.models.CrossAttentionFusion import TextVisualCrossAttention
+from HICD.changedetection.models.HierarchicalInstanceHead import (
     HierarchicalInstanceHead,
 )
-from MambaCD.changedetection.models.class_mapping import (
+from HICD.changedetection.models.class_mapping import (
     TARGET_NAMES, STATE_NAMES, CLIP_TEXT_PROMPTS,
     NUM_TARGETS, NUM_STATES,
 )
