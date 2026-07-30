@@ -5,11 +5,12 @@
 ## 核心创新
 
 1. **Mamba 骨干网络** — 用 State Space Model 替代 Transformer 做遥感变化检测, 线性复杂度处理高分辨率影像
-2. **CLIP 文本引导** — 利用视觉-语言模型的语义先验, 支持零样本/可扩展类别
+2. **CLIP 文本引导** — 利用视觉-语言模型的语义先验, 支持零样本/可扩展类别 (V3: 解冻最后 2 层微调)
 3. **层级检测头** — 目标类型 → 变化状态的两层分类, 通过有效性矩阵约束合法组合
 4. **多尺度 FPN** — 自顶向下路径 + 侧向连接, 处理 5000 倍尺度差异
 5. **辅助层损失** — 中间 decoder 层监督, 加速收敛
-6. **ICD 统一评估协议** — 实例级评估框架, 公平对比像素级和实例级方法
+6. **One-to-Many 匹配** — V3: 每个 GT 匹配 Top-K 个 query, 正样本增加 3 倍, 收敛更快
+7. **ICD 统一评估协议** — 实例级评估框架, 公平对比像素级和实例级方法
 
 ## 数据集
 
@@ -29,8 +30,9 @@
 MambaCD/
 ├── 0617final/                 # 数据集 (含 instances.json)
 ├── weights/                   # 预训练权重
-│   ├── vssmtiny_dp01_ckpt_epoch_292.pth   # VSSM backbone
-│   └── open_clip_pytorch_model.bin        # CLIP 文本编码器
+│   ├── vssm1_small_0229s_ckpt_epoch_240.pth  # VSSM-small backbone (V3 默认)
+│   ├── vssmtiny_dp01_ckpt_epoch_292.pth      # VSSM-tiny backbone (V2)
+│   └── open_clip_pytorch_model.bin           # CLIP 文本编码器
 ├── outputs/                   # 训练输出
 ├── classification/
 │   └── models/vmamba.py       # VSSM 模型实现
@@ -113,8 +115,9 @@ python MambaCD/changedetection/script/train_full.py \
 | `--use_amp` | False | 混合精度训练 |
 | `--resume` | None | 恢复训练的 checkpoint 路径 |
 
-**Loss 权重** (当前最优):
-- bbox: 3.0, giou: 2.0, target: 2.0, state: 1.5, aux: 0.4
+**Loss 权重** (V3):
+- bbox: 2.0, giou: 1.5, target: 3.0, state: 2.0, aux: 0.4
+- 匹配策略: One-to-Many Top-K (K=3)
 
 ### 评估
 
@@ -231,6 +234,14 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 | 13 | Vessel | 62-66 | 同上 |
 | 14 | Crater | 67 | 无状态 |
 | 15 | VehicleRevet | 68 | 无状态 |
+
+## 版本历史
+
+| 版本 | 日期 | 主要改动 |
+|------|------|----------|
+| V1 | 2026-07-28 | 初始架构: VSSM-tiny + CLIP + Hungarian 匹配 |
+| V2 | 2026-07-29 | 多尺度 FPN (p1/p2/p3), PositionalEncoding2D, 数据增强 |
+| V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡 (target/state 权重↑), CLIP 解冻最后 2 层, VSSM-small backbone |
 
 ## 致谢
 
