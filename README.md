@@ -13,6 +13,9 @@
 7. **变化注意力 (Change Attention)** — V3: cross-attention 让 state 分类聚焦变化最剧烈区域, 解决大目标小损伤的信号淹没问题
 8. **弹坑感知状态传播** — V3: 推理时弹坑中心点落在基础设施 bbox 内 → 自动升级为 Damaged
 9. **ICD 统一评估协议** — 实例级评估框架, 公平对比像素级和实例级方法
+10. **SD-SSM (Spatial Difference-aware SSM)** — V4: ChangeDecoder 每个 stage 新增差值分支, 显式将 pre-post 特征差送入 SSM, 让门控机制直接建模"哪里变了"
+11. **Context-SSM** — V4: 多尺度深度可分离卷积注入局部空间上下文, 弥补 SSM 展平 2D→1D 时丢失的局部信息
+12. **Pair-weighted State Loss** — V4: 对稀有 (target, state) 组合加权 (如 Aircraft/Vessel+Replaced 3x), 缓解实例级类别不平衡
 
 ## 数据集
 
@@ -117,9 +120,10 @@ python MambaCD/changedetection/script/train_full.py \
 | `--use_amp` | False | 混合精度训练 |
 | `--resume` | None | 恢复训练的 checkpoint 路径 |
 
-**Loss 权重** (V3):
+**Loss 权重** (V4):
 - bbox: 2.0, giou: 1.5, target: 3.0, state: 2.0, aux: 0.4
 - 匹配策略: One-to-Many Top-K (K=3)
+- state loss: Pair-weighted CE + Dice (稀有组合如 Aircraft/Vessel+Replaced 权重 3x)
 
 ### 评估
 
@@ -242,6 +246,7 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 | V1 | 2026-07-28 | 初始架构: VSSM-tiny + CLIP + Hungarian 匹配 |
 | V2 | 2026-07-29 | 多尺度 FPN (p1/p2/p3), PositionalEncoding2D, 数据增强 |
 | V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡, CLIP 解冻, VSSM-small, 精简至 10 类, 变化注意力, 弹坑感知传播 |
+| V4 | 2026-07-30 | SD-SSM 差值分支, Context-SSM 局部上下文注入, Pair-weighted state loss, bbox 转换 bug 修复 |
 
 ## 致谢
 
