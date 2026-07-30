@@ -22,7 +22,7 @@
 | Ports | 358 | 119 | 119 | 4,868 |
 | Urban-Rural Areas | 4,937 | 1,234 | 1,819 | 204,860 |
 
-**类别体系**: 16 目标类型 × 6 变化状态, 68 个非背景 train_id。详见 `0617final/classes.csv`。
+**类别体系**: 10 目标类型 × 6 变化状态, 48 个非背景 train_id。详见 `0617final/classes.csv`。
 
 ## 项目结构
 
@@ -222,18 +222,14 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 | 1 | Runway | 3-7 | NoChange, Damaged, Reduced, Added, Extended |
 | 2 | Taxiway | 8-12 | 同上 |
 | 3 | Apron | 13-17 | 同上 |
-| 4 | Bridge | 18-22 | 同上 |
-| 5 | Highway | 23-27 | 同上 |
-| 6 | Building | 28-32 | 同上 |
-| 7 | Shelter | 33-37 | 同上 |
-| 8 | Tower | 38-42 | 同上 |
-| 9 | Pier | 43-47 | 同上 |
-| 10 | Dock | 48-52 | 同上 |
-| 11 | Tank | 53-56 | NoChange, Damaged, Reduced, Added |
-| 12 | Aircraft | 57-61 | NoChange, Damaged, Reduced, Added, Replaced |
-| 13 | Vessel | 62-66 | 同上 |
-| 14 | Crater | 67 | 无状态 |
-| 15 | VehicleRevet | 68 | 无状态 |
+| 4 | Highway | 23-27 | 同上 |
+| 5 | Building | 28-32 | 同上 |
+| 6 | Tank | 53-56 | NoChange, Damaged, Reduced, Added |
+| 7 | Aircraft | 57-61 | NoChange, Damaged, Reduced, Added, Replaced |
+| 8 | Vessel | 62-66 | 同上 |
+| 9 | Crater | 67 | 无状态 |
+
+> 已移除 6 个稀有类别 (Bridge/Shelter/Tower/Pier/Dock/VehicleRevet, 共 620 实例), 详见 `instances.json.bak`。
 
 ## 版本历史
 
@@ -241,7 +237,7 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 |------|------|----------|
 | V1 | 2026-07-28 | 初始架构: VSSM-tiny + CLIP + Hungarian 匹配 |
 | V2 | 2026-07-29 | 多尺度 FPN (p1/p2/p3), PositionalEncoding2D, 数据增强 |
-| V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡 (target/state 权重↑), CLIP 解冻最后 2 层, VSSM-small backbone |
+| V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡, CLIP 解冻, VSSM-small, 精简至 10 类目标 |
 
 ## 致谢
 
