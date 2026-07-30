@@ -196,4 +196,57 @@ class HierarchicalSCDInstance(nn.Module):
                 'scores': max_target_prob[valid],
             })
 
+        # V3: Crater-aware state propagation
+        results = self._propagate_damage_state(results)
+
         return results
+
+    # ── Crater-aware state propagation ────────────────────────────
+    # 大型基础设施(跑道/滑行道/停机坪)的损坏往往只占很小面积,
+    # 被弹坑覆盖后应自动升级为 Damaged 状态。
+    # 与人类分析师思路一致: 先检测弹坑, 再推断基础设施受损。
+    _INFRA_TARGETS = {1, 2, 3}   # Runway, Taxiway, Apron (new idx)
+    _CRATER_IDX = 9              # Crater (new idx)
+
+    def _propagate_damage_state(self, results):
+        """
+        对每个样本: 如果 Crater 的中心点落在 Runway/Taxiway/Apron 的 bbox 内,
+        将该基础设施状态升级为 Damaged(1)。
+
+        逻辑: 弹坑是点状目标, 跑道是面状目标。
+        判断弹坑是否"在跑道内"用中心点包含, 不用 IoU。
+        与人类分析师一致: 看到弹坑在跑道上 → 跑道不可用。
+        """
+        for res in results:
+            boxes = res['boxes']      # (N, 4) [cx, cy, w, h]
+            targets = res['targets']  # (N,)
+            states = res['states']    # (N,)
+            n = len(boxes)
+            if n == 0:
+                continue
+
+            # 找出所有 Crater 的中心点
+            crater_mask = (targets == self._CRATER_IDX)
+            crater_centers = boxes[crater_mask, :2]  # (C, 2) [cx, cy]
+
+            if len(crater_centers) == 0:
+                continue
+
+            # 对每个基础设施实例, 检查弹坑中心是否在其 bbox 内
+            for i in range(n):
+                if targets[i].item() not in self._INFRA_TARGETS:
+                    continue
+                if states[i].item() == 1:  # 已经是 Damaged
+                    continue
+
+                infra_cx, infra_cy = boxes[i, 0].item(), boxes[i, 1].item()
+                infra_hw = boxes[i, 2].item() / 2  # half width
+                infra_hh = boxes[i, 3].item() / 2  # half height
+                x1, y1 = infra_cx - infra_hw, infra_cy - infra_hh
+                x2, y2 = infra_cx + infra_hw, infra_cy + infra_hh
+
+                # 检查任一弹坑中心是否在 bbox 内
+                inside_x = (crater_centers[:, 0] >= x1) & (crater_centers[:, 0] <= x2)
+                inside_y = (crater_centers[:, 1] >= y1) & (crater_centers[:, 1] <= y2)
+                if (inside_x & inside_y).any():
+                    states[i] = 1  # 升级为 Damaged
