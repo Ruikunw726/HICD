@@ -205,7 +205,7 @@ class HierarchicalSCDInstance(nn.Module):
     # 大型基础设施(跑道/滑行道/停机坪)的损坏往往只占很小面积,
     # 被弹坑覆盖后应自动升级为 Damaged 状态。
     # 与人类分析师思路一致: 先检测弹坑, 再推断基础设施受损。
-    _INFRA_TARGETS = {1, 2, 3}   # Runway, Taxiway, Apron (new idx)
+    _INFRA_TARGETS = {0, 1, 2, 3}  # Farmland, Runway, Taxiway, Apron
     _CRATER_IDX = 9              # Crater (new idx)
 
     def _propagate_damage_state(self, results):
