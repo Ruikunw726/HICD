@@ -10,7 +10,9 @@
 4. **多尺度 FPN** — 自顶向下路径 + 侧向连接, 处理 5000 倍尺度差异
 5. **辅助层损失** — 中间 decoder 层监督, 加速收敛
 6. **One-to-Many 匹配** — V3: 每个 GT 匹配 Top-K 个 query, 正样本增加 3 倍, 收敛更快
-7. **ICD 统一评估协议** — 实例级评估框架, 公平对比像素级和实例级方法
+7. **变化注意力 (Change Attention)** — V3: cross-attention 让 state 分类聚焦变化最剧烈区域, 解决大目标小损伤的信号淹没问题
+8. **弹坑感知状态传播** — V3: 推理时弹坑中心点落在基础设施 bbox 内 → 自动升级为 Damaged
+9. **ICD 统一评估协议** — 实例级评估框架, 公平对比像素级和实例级方法
 
 ## 数据集
 
@@ -204,7 +206,9 @@ outputs = model(pre_data, post_data)
 # aux_outputs:  list[dict]    辅助层预测
 ```
 
-### 推理
+### 推理 (含弹坑感知后处理)
+
+推理后自动执行: 弹坑中心点落在 Runway/Taxiway/Apron bbox 内 → 状态升级为 Damaged。
 
 ```python
 results = model.inference(pre_data, post_data, confidence_threshold=0.3)
@@ -237,7 +241,7 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 |------|------|----------|
 | V1 | 2026-07-28 | 初始架构: VSSM-tiny + CLIP + Hungarian 匹配 |
 | V2 | 2026-07-29 | 多尺度 FPN (p1/p2/p3), PositionalEncoding2D, 数据增强 |
-| V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡, CLIP 解冻, VSSM-small, 精简至 10 类目标 |
+| V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡, CLIP 解冻, VSSM-small, 精简至 10 类, 变化注意力, 弹坑感知传播 |
 
 ## 致谢
 
