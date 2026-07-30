@@ -38,6 +38,12 @@ class CLIPTextEncoder(nn.Module):
         if freeze:
             for param in self.clip_model.parameters():
                 param.requires_grad = False
+            # V3: unfreeze last 2 transformer layers
+            if hasattr(self.clip_model, "transformer"):
+                layers = list(self.clip_model.transformer.resblocks)
+                for layer in layers[-2:]:
+                    for param in layer.parameters():
+                        param.requires_grad = True
 
     def forward(self, text_list):
         """
@@ -47,8 +53,12 @@ class CLIPTextEncoder(nn.Module):
             text_features: (num_texts, embed_dim)
         """
         tokens = self.tokenizer(text_list).to(next(self.parameters()).device)
-        with torch.no_grad():
+        has_trainable = any(p.requires_grad for p in self.clip_model.parameters())
+        if has_trainable:
             text_features = self.clip_model.encode_text(tokens).float()
+        else:
+            with torch.no_grad():
+                text_features = self.clip_model.encode_text(tokens).float()
         text_features = self.text_projection(text_features)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return text_features

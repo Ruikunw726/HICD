@@ -546,7 +546,7 @@ if __name__ == "__main__":
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str,
-                        default="MambaCD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
+                        default="MambaCD/weights/vssm1_small_0229s_ckpt_epoch_240.pth",
                         help="VSSM 预训练权重路径")
     parser.add_argument("--clip_weights_path", type=str,
                         default="MambaCD/weights/open_clip_pytorch_model.bin",
@@ -573,7 +573,7 @@ if __name__ == "__main__":
 
     # VSSM config
     parser.add_argument("--cfg", type=str,
-                        default="MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+                        default="MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()

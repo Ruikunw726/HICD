@@ -11,7 +11,7 @@ Hierarchical Instance Detection Loss
   - 层级有效性约束 (非法状态不参与损失计算)
 
 损失权重 (可调):
-  bbox: 5.0, giou: 2.0, target: 1.0, state: 0.5, aux: 0.4
+  bbox: 2.0, giou: 1.5, target: 3.0, state: 2.0, aux: 0.4  (V3)
 """
 import torch
 import torch.nn as nn
@@ -86,10 +86,10 @@ class HierarchicalInstanceLoss(nn.Module):
       - L_aux: 辅助层损失 (权重衰减)
     """
     def __init__(self, num_targets=NUM_TARGETS, num_states=NUM_STATES,
-                 weight_bbox=5.0, weight_giou=2.0,
-                 weight_target=1.0, weight_state=0.5,
+                 weight_bbox=2.0, weight_giou=1.5,
+                 weight_target=3.0, weight_state=2.0,
                  weight_aux=0.4, focal_alpha=0.25, focal_gamma=2.0,
-                 class_weights=None):
+                 class_weights=None, topk=3):
         super().__init__()
         self.num_targets = num_targets
         self.num_states = num_states
@@ -98,6 +98,7 @@ class HierarchicalInstanceLoss(nn.Module):
         self.weight_target = weight_target
         self.weight_state = weight_state
         self.weight_aux = weight_aux
+        self.topk = topk
 
         self.focal_loss = FocalLoss(alpha=focal_alpha, gamma=focal_gamma)
         self.dice_loss = DiceLoss()
@@ -172,7 +173,7 @@ class HierarchicalInstanceLoss(nn.Module):
             if M == 0:
                 continue
 
-            # ── Hungarian 匹配 ──
+            # ── One-to-Many Top-K 匹配 (V3) ──
             cost_bbox = torch.cdist(pred_boxes[b], gt_boxes, p=1)
 
             cost_giou = -self._generalized_box_iou(
@@ -185,11 +186,16 @@ class HierarchicalInstanceLoss(nn.Module):
             cost_target = -torch.log(target_prob_gt.clamp(min=1e-6))
 
             cost_matrix = (
-                self.weight_bbox * cost_bbox.detach().cpu().numpy() +
-                self.weight_giou * cost_giou.detach().cpu().numpy() +
-                self.weight_target * cost_target.detach().cpu().numpy()
-            )
-            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                self.weight_bbox * cost_bbox.detach() +
+                self.weight_giou * cost_giou.detach() +
+                self.weight_target * cost_target.detach()
+            )  # (Q, M)
+
+            # 每个 GT 匹配 Top-K 个 query (V3: one-to-many)
+            K = min(self.topk, cost_matrix.shape[0])
+            _, topk_indices = cost_matrix.topk(K, dim=0, largest=False)  # (K, M)
+            row_ind = topk_indices.flatten().cpu().numpy()
+            col_ind = torch.arange(M).unsqueeze(0).expand(K, -1).flatten().cpu().numpy()
 
             # ── bbox 损失 ──
             total_bbox = total_bbox + F.l1_loss(
