@@ -1,22 +1,22 @@
-ï»¿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Hierarchical Instance Detection Head
 
-æ ¹æ® 0617final æ•°æ®é›†ç‰¹ç‚¹é‡æ–°è®¾è®¡:
-  - 16 ç§ç›®æ ‡ç±»å‹, 6 ç§å˜åŒ–çŠ¶æ€, å±‚çº§æœ‰æ•ˆæ€§çº¦æŸ
-  - æç«¯å°ºåº¦å·®å¼‚: å¼¹å‘ ~50px â†” å†œç”° ~262K px
-  - ä¸¥é‡ç±»åˆ«ä¸å¹³è¡¡: å»ºç­‘ç‰©å æ¯”é«˜è¾¾ 92%
-  - 3 ä¸ªåœºæ™¯: æœºåœº/æ¸¯å£/åŸä¹¡
+¸ù¾İ 0617final Êı¾İ¼¯ÌØµãÖØĞÂÉè¼Æ:
+  - 16 ÖÖÄ¿±êÀàĞÍ, 6 ÖÖ±ä»¯×´Ì¬, ²ã¼¶ÓĞĞ§ĞÔÔ¼Êø
+  - ¼«¶Ë³ß¶È²îÒì: µ¯¿Ó ~50px ? Å©Ìï ~262K px
+  - ÑÏÖØÀà±ğ²»Æ½ºâ: ½¨ÖşÎïÕ¼±È¸ß´ï 92%
+  - 3 ¸ö³¡¾°: »ú³¡/¸Û¿Ú/³ÇÏç
 
-æ¶æ„:
+¼Ü¹¹:
   pixel_features (B, 128, H/4, W/4)
-    â†’ ScaleFPN (3 çº§é‡‘å­—å¡”: P3@1x, P4@2x, P5@4x)
-    â†’ Transformer Decoder (6 å±‚, ä¸­é—´å±‚è¾…åŠ©è¾“å‡º)
-    â†’ Scale-aware Query Embedding (34 queries Ã— 3 scales)
-    â†’ é¢„æµ‹å¤´:
-        bbox_head     â†’ (B, Q, 4)        [cx, cy, w, h] âˆˆ [0,1]
-        target_head   â†’ (B, Q, 16)       ç›®æ ‡ç±»å‹ logits
-        state_head    â†’ (B, Q, 6)        å˜åŒ–çŠ¶æ€ logits (æœ‰æ•ˆæ€§æ©ç )
+    ¡ú ScaleFPN (3 ¼¶½ğ×ÖËş: P3@1x, P4@2x, P5@4x)
+    ¡ú Transformer Decoder (6 ²ã, ÖĞ¼ä²ã¸¨ÖúÊä³ö)
+    ¡ú Scale-aware Query Embedding (34 queries ¡Á 3 scales)
+    ¡ú Ô¤²âÍ·:
+        bbox_head     ¡ú (B, Q, 4)        [cx, cy, w, h] ¡Ê [0,1]
+        target_head   ¡ú (B, Q, 16)       Ä¿±êÀàĞÍ logits
+        state_head    ¡ú (B, Q, 6)        ±ä»¯×´Ì¬ logits (ÓĞĞ§ĞÔÑÚÂë)
 """
 import math
 import numpy as np
@@ -33,20 +33,20 @@ from MambaCD.changedetection.models.class_mapping import (
 
 
 # =====================================================================
-# å¤šå°ºåº¦ç‰¹å¾é‡‘å­—å¡” (FPN)
+# ¶à³ß¶ÈÌØÕ÷½ğ×ÖËş (FPN)
 # =====================================================================
 class ScaleFPN(nn.Module):
     """
-    ä» ChangeDecoder è¾“å‡ºçš„å•å°ºåº¦ç‰¹å¾æ„å»º 3 çº§é‡‘å­—å¡”ã€‚
+    ´Ó ChangeDecoder Êä³öµÄµ¥³ß¶ÈÌØÕ÷¹¹½¨ 3 ¼¶½ğ×ÖËş¡£
 
-    è®¾è®¡ä¾æ®: æ•°æ®é›†ä¸­ç›®æ ‡å°ºåº¦è·¨åº¦è¾¾ 5000 å€,
-    éœ€è¦å¤šå°ºåº¦ç‰¹å¾æ¥è¦†ç›–ä¸åŒå¤§å°çš„ç›®æ ‡ã€‚
+    Éè¼ÆÒÀ¾İ: Êı¾İ¼¯ÖĞÄ¿±ê³ß¶È¿ç¶È´ï 5000 ±¶,
+    ĞèÒª¶à³ß¶ÈÌØÕ÷À´¸²¸Ç²»Í¬´óĞ¡µÄÄ¿±ê¡£
 
-      P3: 128ch @ H/4 Ã— W/4   â€” å°ç›®æ ‡ (å¼¹å‘ã€å¡”å°)
-      P4: 128ch @ H/8 Ã— W/8   â€” ä¸­ç›®æ ‡ (å»ºç­‘ã€è½¦è¾†)
-      P5: 128ch @ H/16 Ã— W/16 â€” å¤§ç›®æ ‡ (å†œç”°ã€è·‘é“)
+      P3: 128ch @ H/4 ¡Á W/4   ¡ª Ğ¡Ä¿±ê (µ¯¿Ó¡¢ËşÌ¨)
+      P4: 128ch @ H/8 ¡Á W/8   ¡ª ÖĞÄ¿±ê (½¨Öş¡¢³µÁ¾)
+      P5: 128ch @ H/16 ¡Á W/16 ¡ª ´óÄ¿±ê (Å©Ìï¡¢ÅÜµÀ)
 
-    ä½¿ç”¨è‡ªé¡¶å‘ä¸‹è·¯å¾„ + ä¾§å‘è¿æ¥è¿›è¡Œç‰¹å¾èåˆã€‚
+    Ê¹ÓÃ×Ô¶¥ÏòÏÂÂ·¾¶ + ²àÏòÁ¬½Ó½øĞĞÌØÕ÷ÈÚºÏ¡£
     """
     def __init__(self, in_channels=128, out_channels=128):
         super().__init__()
@@ -82,12 +82,12 @@ class ScaleFPN(nn.Module):
 
 
 # =====================================================================
-# å°ºåº¦æ„ŸçŸ¥æŸ¥è¯¢åµŒå…¥
+# ³ß¶È¸ĞÖª²éÑ¯Ç¶Èë
 # =====================================================================
 class ScaleAwareQueryEmbedding(nn.Module):
     """
-    ä¸ºæ¯ä¸ªç‰¹å¾å°ºåº¦ç”Ÿæˆç‹¬ç«‹çš„æŸ¥è¯¢åµŒå…¥ã€‚
-    ä¸åŒå°ºåº¦çš„ç‰¹å¾å›¾å¯¹åº”ä¸åŒå¤§å°çš„ç›®æ ‡, æŸ¥è¯¢éœ€è¦æ„ŸçŸ¥è‡ªèº«å°ºåº¦ã€‚
+    ÎªÃ¿¸öÌØÕ÷³ß¶ÈÉú³É¶ÀÁ¢µÄ²éÑ¯Ç¶Èë¡£
+    ²»Í¬³ß¶ÈµÄÌØÕ÷Í¼¶ÔÓ¦²»Í¬´óĞ¡µÄÄ¿±ê, ²éÑ¯ĞèÒª¸ĞÖª×ÔÉí³ß¶È¡£
     """
     def __init__(self, hidden_dim=128, num_queries_per_scale=34):
         super().__init__()
@@ -106,7 +106,7 @@ class ScaleAwareQueryEmbedding(nn.Module):
 
 
 # =====================================================================
-# å®ä¾‹çº§æ£€æµ‹å¤´
+# ÊµÀı¼¶¼ì²âÍ·
 # =====================================================================
 
 class PositionalEncoding2D(nn.Module):
@@ -121,39 +121,38 @@ class PositionalEncoding2D(nn.Module):
         device = x.device
         
         pe = torch.zeros(C, H, W, device=device)
-        
-        # Half channels for y, half for x
         half = C // 2
+        n_freq = half // 2
         
-        # Y encoding
-        y_pos = torch.arange(H, device=device).unsqueeze(1).float()
-        div_term = torch.exp(torch.arange(0, half, 2, device=device).float() * 
-                           -(np.log(10000.0) / half))
-        pe[0:half:2, :, :] = torch.sin(y_pos * div_term).unsqueeze(2).expand(-1, -1, W)
-        pe[1:half:2, :, :] = torch.cos(y_pos * div_term).unsqueeze(2).expand(-1, -1, W)
+        y_pos = torch.arange(H, device=device).float()
+        div_term = torch.exp(torch.arange(0, n_freq, device=device).float() *
+                             -(np.log(10000.0) / n_freq))
+        sin_y = torch.sin(y_pos[:, None] * div_term[None, :])
+        cos_y = torch.cos(y_pos[:, None] * div_term[None, :])
+        pe[0:half:2, :, :] = sin_y.T.unsqueeze(2).expand(-1, -1, W)
+        pe[1:half:2, :, :] = cos_y.T.unsqueeze(2).expand(-1, -1, W)
         
-        # X encoding
-        x_pos = torch.arange(W, device=device).unsqueeze(0).float()
-        div_term = torch.exp(torch.arange(0, half, 2, device=device).float() * 
-                           -(np.log(10000.0) / half))
-        pe[half::2, :, :] = torch.sin(x_pos * div_term).unsqueeze(1).expand(-1, H, -1)
-        pe[half+1::2, :, :] = torch.cos(x_pos * div_term).unsqueeze(1).expand(-1, H, -1)
+        x_pos = torch.arange(W, device=device).float()
+        sin_x = torch.sin(x_pos[:, None] * div_term[None, :])
+        cos_x = torch.cos(x_pos[:, None] * div_term[None, :])
+        pe[half::2, :, :]   = sin_x.T.unsqueeze(1).expand(-1, H, -1)
+        pe[half+1::2, :, :] = cos_x.T.unsqueeze(1).expand(-1, H, -1)
         
         return x + pe.unsqueeze(0)
 
 
 class HierarchicalInstanceHead(nn.Module):
     """
-    å±‚çº§å®ä¾‹æ£€æµ‹å¤´: FPN â†’ Transformer Decoder â†’ åˆ†å±‚é¢„æµ‹
+    ²ã¼¶ÊµÀı¼ì²âÍ·: FPN ¡ú Transformer Decoder ¡ú ·Ö²ãÔ¤²â
 
-    åˆ†å±‚é¢„æµ‹é€»è¾‘:
-      1. target_head é¢„æµ‹ 16 ç§ç›®æ ‡ç±»å‹
-      2. state_head é¢„æµ‹ 6 ç§å˜åŒ–çŠ¶æ€
-      3. é€šè¿‡ target_state_mask ç¡®ä¿åªæœ‰åˆæ³•çš„çŠ¶æ€ç»„åˆè¢«é€‰ä¸­
+    ·Ö²ãÔ¤²âÂß¼­:
+      1. target_head Ô¤²â 16 ÖÖÄ¿±êÀàĞÍ
+      2. state_head Ô¤²â 6 ÖÖ±ä»¯×´Ì¬
+      3. Í¨¹ı target_state_mask È·±£Ö»ÓĞºÏ·¨µÄ×´Ì¬×éºÏ±»Ñ¡ÖĞ
 
-    è¾…åŠ©è¾“å‡º:
-      ä¸­é—´ decoder å±‚ (layer 2, 4) ä¹Ÿäº§ç”Ÿé¢„æµ‹, ç”¨äºè¾…åŠ©æŸå¤±ã€‚
-      è®­ç»ƒæ—¶è¿”å›æ‰€æœ‰å±‚çš„é¢„æµ‹, æ¨ç†æ—¶åªç”¨æœ€åä¸€å±‚ã€‚
+    ¸¨ÖúÊä³ö:
+      ÖĞ¼ä decoder ²ã (layer 2, 4) Ò²²úÉúÔ¤²â, ÓÃÓÚ¸¨ÖúËğÊ§¡£
+      ÑµÁ·Ê±·µ»ØËùÓĞ²ãµÄÔ¤²â, ÍÆÀíÊ±Ö»ÓÃ×îºóÒ»²ã¡£
     """
     def __init__(self, visual_dim=128, num_queries_per_scale=34,
                  num_targets=NUM_TARGETS, num_states=NUM_STATES,
@@ -167,23 +166,23 @@ class HierarchicalInstanceHead(nn.Module):
         self.num_decoder_layers = num_decoder_layers
         self.num_aux_layers = num_aux_layers
 
-        # â”€â”€ FPN â”€â”€
+        # ©¤©¤ FPN ©¤©¤
         # V2: 2D sinusoidal positional encoding
         self.pos_enc = PositionalEncoding2D(visual_dim)
         self.fpn = ScaleFPN(in_channels=visual_dim, out_channels=visual_dim)
 
-        # â”€â”€ å¤šå°ºåº¦ç‰¹å¾æŠ•å½± â”€â”€
+        # ©¤©¤ ¶à³ß¶ÈÌØÕ÷Í¶Ó° ©¤©¤
         self.scale_proj = nn.ModuleList([
             nn.Linear(visual_dim, visual_dim) for _ in range(3)
         ])
 
-        # â”€â”€ å°ºåº¦æ„ŸçŸ¥æŸ¥è¯¢åµŒå…¥ â”€â”€
+        # ©¤©¤ ³ß¶È¸ĞÖª²éÑ¯Ç¶Èë ©¤©¤
         self.query_embedding = ScaleAwareQueryEmbedding(
             hidden_dim=visual_dim,
             num_queries_per_scale=num_queries_per_scale
         )
 
-        # â”€â”€ Transformer Decoder Layers (æ‰‹åŠ¨éå†ä»¥è·å–ä¸­é—´è¾“å‡º) â”€â”€
+        # ©¤©¤ Transformer Decoder Layers (ÊÖ¶¯±éÀúÒÔ»ñÈ¡ÖĞ¼äÊä³ö) ©¤©¤
         self.decoder_layers = nn.ModuleList([
             nn.TransformerDecoderLayer(
                 d_model=visual_dim, nhead=nhead,
@@ -195,7 +194,7 @@ class HierarchicalInstanceHead(nn.Module):
         ])
         self.decoder_norm = nn.LayerNorm(visual_dim)
 
-        # â”€â”€ è¾…åŠ©å±‚ç´¢å¼• â”€â”€
+        # ©¤©¤ ¸¨Öú²ãË÷Òı ©¤©¤
         aux_indices = []
         if num_aux_layers >= 1:
             aux_indices.append(num_decoder_layers // 3)
@@ -203,7 +202,7 @@ class HierarchicalInstanceHead(nn.Module):
             aux_indices.append(2 * num_decoder_layers // 3)
         self.aux_layer_indices = aux_indices
 
-        # â”€â”€ è¾…åŠ©é¢„æµ‹å¤´ â”€â”€
+        # ©¤©¤ ¸¨ÖúÔ¤²âÍ· ©¤©¤
         self.aux_heads = nn.ModuleList()
         for _ in self.aux_layer_indices:
             self.aux_heads.append(nn.ModuleDict({
@@ -221,7 +220,7 @@ class HierarchicalInstanceHead(nn.Module):
                 ),
             }))
 
-        # â”€â”€ æœ€ç»ˆé¢„æµ‹å¤´ â”€â”€
+        # ©¤©¤ ×îÖÕÔ¤²âÍ· ©¤©¤
         self.bbox_head = nn.Sequential(
             nn.Linear(visual_dim, visual_dim), nn.GELU(),
             nn.Linear(visual_dim, visual_dim), nn.GELU(),
@@ -237,7 +236,7 @@ class HierarchicalInstanceHead(nn.Module):
             nn.Linear(visual_dim, num_states)
         )
 
-        # â”€â”€ å±‚çº§æœ‰æ•ˆæ€§çŸ©é˜µ â”€â”€
+        # ©¤©¤ ²ã¼¶ÓĞĞ§ĞÔ¾ØÕó ©¤©¤
         self.register_buffer("target_state_mask", get_valid_state_mask())
 
         self._pos_cache = {}
@@ -273,7 +272,7 @@ class HierarchicalInstanceHead(nn.Module):
         """
         Args:
             pixel_features: (B, 128, H/4, W/4)
-            text_features:  (16, text_dim) å¯é€‰
+            text_features:  (16, text_dim) ¿ÉÑ¡
 
         Returns:
             dict:
@@ -281,35 +280,32 @@ class HierarchicalInstanceHead(nn.Module):
                 pred_target:  (B, Q, 16)
                 pred_state:   (B, Q, 6)
                 query_feats:  (B, Q, 128)
-                aux_outputs:  list of dict (è¾…åŠ©å±‚é¢„æµ‹)
+                aux_outputs:  list of dict (¸¨Öú²ãÔ¤²â)
         """
-        B = pixel_features.shape[0]
-
         # V2: Handle multi-scale input from ChangeDecoder
         if multi_scale and isinstance(pixel_features, (list, tuple)):
-            # pixel_features = (p1, p2, p3) from ChangeDecoder
+            B = pixel_features[0].shape[0]
             scales = []
             for feat in pixel_features:
-                scales.append(self.pos_enc(feat))  # Add positional encoding
-            # Update FPN to match input scales
-            # Use p1 as-is, downsample p2->p3 if needed
+                scales.append(self.pos_enc(feat))
+            pixel_features = pixel_features[0]
         else:
-            # Legacy single-scale input
+            B = pixel_features.shape[0]
             pixel_features = self.pos_enc(pixel_features)
             scales = self.fpn(pixel_features)
 
 
-        # 2. å±•å¹³æ‰€æœ‰å°ºåº¦
+        # 2. Õ¹Æ½ËùÓĞ³ß¶È
         memories = []
         for scale_idx, feat in enumerate(scales):
             memories.append(self._flatten_scale(feat, scale_idx))
         memory = torch.cat(memories, dim=1)  # (B, total_HW, C)
 
-        # 3. ç”ŸæˆæŸ¥è¯¢
+        # 3. Éú³É²éÑ¯
         queries = self.query_embedding(pixel_features.device)
         queries = queries.unsqueeze(0).expand(B, -1, -1)
 
-        # 4. æ‰‹åŠ¨éå† Decoder å±‚ (è·å–ä¸­é—´è¾“å‡º)
+        # 4. ÊÖ¶¯±éÀú Decoder ²ã (»ñÈ¡ÖĞ¼äÊä³ö)
         instance_feats = queries
         aux_outputs = []
 
@@ -329,14 +325,14 @@ class HierarchicalInstanceHead(nn.Module):
                     'pred_state': aux_state,
                 })
 
-        # 5. æœ€ç»ˆå±‚
+        # 5. ×îÖÕ²ã
         instance_feats = self.decoder_norm(instance_feats)
         pred_boxes = self.bbox_head(instance_feats)
         pred_target = self.target_head(instance_feats)
         pred_state = self.state_head(instance_feats)
         pred_state = self._apply_state_mask(pred_target, pred_state)
 
-        # 6. CLIP æ–‡æœ¬å¢å¼º
+        # 6. CLIP ÎÄ±¾ÔöÇ¿
         if text_features is not None and text_features.shape[0] == self.num_targets:
             inst_norm = F.normalize(instance_feats, dim=-1)
             txt_norm = F.normalize(text_features, dim=-1)
