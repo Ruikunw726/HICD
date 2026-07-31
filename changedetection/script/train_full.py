@@ -310,6 +310,13 @@ class Trainer:
         for k, v in model_stats.items():
             print(f'  {k}: {v:.2f}' if isinstance(v, float) else f'  {k}: {v}')
 
+        # CLIP two-stage: -1 = always unfrozen
+        if args.clip_unfreeze_epoch == -1:
+            print("[Two-Stage] CLIP always unfrozen")
+            self.model.clip_text_encoder.unfreeze(n_layers=2)
+        else:
+            print(f"[Two-Stage] CLIP frozen until epoch {args.clip_unfreeze_epoch}")
+
         # Metrics tracker
         self.metrics = InstanceMetrics(
             num_targets=NUM_TARGETS, num_states=NUM_STATES,
@@ -471,6 +478,20 @@ class Trainer:
                 f.write(log_header)
 
         for epoch in range(self.start_epoch, self.args.max_epochs):
+            # ── CLIP 两阶段训练: 在指定 epoch 解冻 CLIP ──
+            if (self.args.clip_unfreeze_epoch >= 0 and
+                    epoch == self.args.clip_unfreeze_epoch and
+                    self.model.clip_text_encoder.is_frozen):
+                print(f"\n[Two-Stage] Unfreezing CLIP at epoch {epoch+1}")
+                self.model.clip_text_encoder.unfreeze(n_layers=2)
+                # 将 CLIP 新参数加入优化器
+                clip_params = [p for p in self.model.clip_text_encoder.parameters() if p.requires_grad]
+                self.optimizer.add_param_group({
+                    "params": clip_params,
+                    "lr": self.base_lr * 0.1,  # CLIP 用 1/10 学习率
+                    "weight_decay": self.args.weight_decay,
+                })
+                print(f"  -> Added {len(clip_params)} CLIP param groups, lr={self.base_lr*0.1:.2e}")
             train_loss = self.train_epoch(epoch)
             val_loss = self.validate()
             r = self.val_results
@@ -546,7 +567,7 @@ if __name__ == "__main__":
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str,
-                        default="HICD/weights/vssm1_small_0229s_ckpt_epoch_240.pth",
+                        default="HICD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
                         help="VSSM 预训练权重路径")
     parser.add_argument("--clip_weights_path", type=str,
                         default="HICD/weights/open_clip_pytorch_model.bin",
@@ -565,6 +586,8 @@ if __name__ == "__main__":
     parser.add_argument("--grad_accum", type=int, default=1, help="梯度累积步数 (等效增大batch_size)")
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--save_freq", type=int, default=10)
+    parser.add_argument("--clip_unfreeze_epoch", type=int, default=20,
+                        help="CLIP 解冻时机 (epoch), 0=始终冻结, -1=始终解冻")
 
     # 输出
     parser.add_argument("--output_dir", type=str, default="HICD/outputs")
@@ -573,10 +596,11 @@ if __name__ == "__main__":
 
     # VSSM config
     parser.add_argument("--cfg", type=str,
-                        default="HICD/changedetection/configs/vssm1/vssm_small_224.yaml")
+                        default="HICD/changedetection/configs/vssm1/vssm1_tiny_224_0229flex.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()
 
     trainer = Trainer(args)
     trainer.train()
+

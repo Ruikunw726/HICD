@@ -1,13 +1,12 @@
-import torch
+﻿import torch
 import torch.nn as nn
 
 
 class CLIPTextEncoder(nn.Module):
     """
-    使用 open_clip 加载 CLIP ViT-B/16 文本编码器。
-
-    输入: 文本列表 ["damaged building", "intact vegetation", ...]
-    输出: 文本嵌入 (num_texts, embed_dim)
+    CLIP ViT-B/16 文本编码器，支持两阶段训练:
+      - 阶段1 (freeze=True): 全部冻结，用 torch.no_grad 推理
+      - 阶段2 (调用 unfreeze()): 解冻最后 N 层 + text_projection，参与梯度更新
     """
     def __init__(self, clip_model="ViT-B-16", embed_dim=512, freeze=True,
                  pretrained_path=None):
@@ -15,7 +14,7 @@ class CLIPTextEncoder(nn.Module):
 
         import open_clip
         import logging
-        logging.disable(logging.WARNING)  # suppress pretrained warning
+        logging.disable(logging.WARNING)
 
         if pretrained_path is not None:
             checkpoint = torch.load(pretrained_path, map_location="cpu")
@@ -30,28 +29,41 @@ class CLIPTextEncoder(nn.Module):
                 "ViT-B-16", pretrained="openai"
             )
 
-        logging.disable(logging.NOTSET)  # restore logging
+        logging.disable(logging.NOTSET)
 
         self.tokenizer = open_clip.get_tokenizer("ViT-B-16")
         self.text_projection = nn.Linear(512, embed_dim)
 
+        self._frozen = True
         if freeze:
             for param in self.clip_model.parameters():
                 param.requires_grad = False
-            # V3: unfreeze last 2 transformer layers
-            if hasattr(self.clip_model, "transformer"):
-                layers = list(self.clip_model.transformer.resblocks)
-                for layer in layers[-2:]:
-                    for param in layer.parameters():
-                        param.requires_grad = True
+            self.text_projection.requires_grad_(True)  # projection 始终可训练
+
+    def unfreeze(self, n_layers=2):
+        """解冻最后 n_layers 个 transformer 层 + text_projection"""
+        for param in self.clip_model.parameters():
+            param.requires_grad = False  # 先全部冻结
+
+        if hasattr(self.clip_model, "transformer"):
+            layers = list(self.clip_model.transformer.resblocks)
+            for layer in layers[-n_layers:]:
+                for param in layer.parameters():
+                    param.requires_grad = True
+
+        self.text_projection.requires_grad_(True)
+        self._frozen = False
+
+        trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in self.parameters())
+        print(f"[CLIP] Unfroze last {n_layers} layers. "
+              f"Trainable: {trainable/1e6:.2f}M / {total/1e6:.2f}M")
+
+    @property
+    def is_frozen(self):
+        return self._frozen
 
     def forward(self, text_list):
-        """
-        Args:
-            text_list: List[str]
-        Returns:
-            text_features: (num_texts, embed_dim)
-        """
         tokens = self.tokenizer(text_list).to(next(self.parameters()).device)
         has_trainable = any(p.requires_grad for p in self.clip_model.parameters())
         if has_trainable:

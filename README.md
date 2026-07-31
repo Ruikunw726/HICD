@@ -5,7 +5,7 @@
 ## 核心创新
 
 1. **Mamba 骨干网络** — 用 State Space Model 替代 Transformer 做遥感变化检测, 线性复杂度处理高分辨率影像
-2. **CLIP 文本引导** — 利用视觉-语言模型的语义先验, 支持零样本/可扩展类别 (V3: 解冻最后 2 层微调)
+2. **CLIP 文本引导** — 利用视觉-语言模型的语义先验, 支持零样本/可扩展类别 (V4.1: 两阶段训练, 前20 epoch冻结后解冻最后2层)
 3. **层级检测头** — 目标类型 → 变化状态的两层分类, 通过有效性矩阵约束合法组合
 4. **多尺度 FPN** — 自顶向下路径 + 侧向连接, 处理 5000 倍尺度差异
 5. **辅助层损失** — 中间 decoder 层监督, 加速收敛
@@ -95,7 +95,15 @@ python changedetection/datasets/pixel_to_instance_0617final.py \
     --data_dir 0617final/Airports --classes_csv 0617final/classes.csv
 ```
 
-### 训练
+#
+## V4.1 更新 (2026-07-31)
+
+| 改动 | 内容 |
+|------|------|
+| VSSM tiny | backbone 从 small (15层, 50M) → tiny (4层, 30M), 减少计算量和显存 |
+| CLIP 两阶段训练 | 前 20 epoch 冻结 CLIP, 之后解冻最后 2 层 (lr=0.1x), 避免早期梯度破坏语义先验 |
+| 训练指令 | `--clip_unfreeze_epoch 20` (默认), `0` = 始终冻结, `-1` = 始终解冻 |
+## 训练
 
 ```bash
 cd /path/to/HICD/..
@@ -252,3 +260,4 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 
 - [VMamba](https://github.com/MzeroMiko/VMamba) — VSSM 骨干网络
 - [OpenCLIP](https://github.com/mlfoundations/open_clip) — 文本编码器
+
