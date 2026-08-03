@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 全量训练脚本 - HICD 层级实例级变化检测
@@ -44,6 +44,7 @@ from HICD.changedetection.datasets.imutils import normalize_img
 from HICD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
 from HICD.changedetection.models.HierarchicalInstanceLoss import HierarchicalInstanceLoss
 from HICD.changedetection.models.class_mapping import (
+    DatasetConfig,
     TARGET_NAMES, STATE_NAMES, NUM_TARGETS, NUM_STATES,
     CLIP_TEXT_PROMPTS,
 )
@@ -216,6 +217,20 @@ class Trainer:
         # 加载所有场景的 instances 并创建 Dataset
         args.data_dir = win_to_wsl(args.data_dir)
         args.classes_csv = win_to_wsl(args.classes_csv) if args.classes_csv else None
+        dataset_config = None
+        if args.dataset:
+            dataset_config = DatasetConfig.load(args.dataset)
+            print(f"[Dataset] Loaded config: {args.dataset}")
+            dataset_config.print_summary()
+        else:
+            # 向后兼容: 从 classes_csv 推断 dataset name
+            csv_name = Path(args.classes_csv).parent.name
+            try:
+                dataset_config = DatasetConfig.load(csv_name)
+                print(f"[Dataset] Auto-detected: {csv_name}")
+                dataset_config.print_summary()
+            except FileNotFoundError:
+                print(f"[Dataset] No config found for '{csv_name}', using defaults")
         scenes = args.scenes.split(",")
         print("\nLoading datasets...")
         train_datasets = []
@@ -298,6 +313,8 @@ class Trainer:
         self.model = HierarchicalSCDInstance(
             pretrained=args.pretrained_weight_path,
             num_queries_per_scale=args.num_queries,
+            dataset_config=dataset_config,
+            clip_mode=args.clip_mode,
             clip_weights_path=args.clip_weights_path,
             **cfg_dict,
         ).to(self.device)
@@ -325,7 +342,9 @@ class Trainer:
 
         # 损失函数
         self.criterion = HierarchicalInstanceLoss(
-            num_targets=NUM_TARGETS, num_states=NUM_STATES,
+            dataset_config=dataset_config,
+            num_targets=dataset_config.num_targets if dataset_config else NUM_TARGETS,
+            num_states=dataset_config.num_states if dataset_config else NUM_STATES,
         ).to(self.device)
 
         # 优化器
@@ -358,7 +377,7 @@ class Trainer:
         # 恢复训练
         self.start_epoch = 0
         if args.resume and os.path.exists(args.resume):
-            self._load_checkpoint(args.resume)
+                self._load_checkpoint(args.resume)
 
     def _load_checkpoint(self, path):
         print(f"Resuming from {path}")
@@ -459,6 +478,16 @@ class Trainer:
 
         val_loss = total_loss / max(num_batches, 1)
         self.val_results = self.metrics.compute()
+
+        # DEBUG: print predicted class distribution
+        from collections import Counter
+        all_preds = []
+        for t in self.metrics.pred_targets_all:
+            all_preds.extend(t.numpy().tolist())
+        dist = Counter(all_preds)
+        total_preds = sum(dist.values())
+        dist_pct = {k: f'{v/total_preds*100:.1f}%' for k, v in dist.most_common(5)}
+        print(f"  [DEBUG] Top-5 predicted targets: {dist_pct}")
         self.val_results['val_loss'] = val_loss
         return val_loss
     def train(self):
@@ -564,6 +593,7 @@ if __name__ == "__main__":
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
                         help="训练场景，逗号分隔")
     parser.add_argument("--classes_csv", type=str, default="HICD/0617final/classes.csv")
+    parser.add_argument("--dataset", type=str, default=None, help="Dataset name for config (e.g. 0617final, xbd)")
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str,
@@ -586,6 +616,7 @@ if __name__ == "__main__":
     parser.add_argument("--grad_accum", type=int, default=1, help="梯度累积步数 (等效增大batch_size)")
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--save_freq", type=int, default=10)
+    parser.add_argument("--clip_mode", type=str, default="both", choices=["both","target","state","none"], help="CLIP ablation: which branch uses CLIP text guidance")
     parser.add_argument("--clip_unfreeze_epoch", type=int, default=20,
                         help="CLIP 解冻时机 (epoch), 0=始终冻结, -1=始终解冻")
 
@@ -596,11 +627,16 @@ if __name__ == "__main__":
 
     # VSSM config
     parser.add_argument("--cfg", type=str,
-                        default="HICD/changedetection/configs/vssm1/vssm1_tiny_224_0229flex.yaml")
+                        default="HICD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()
 
     trainer = Trainer(args)
     trainer.train()
+
+
+
+
+
 

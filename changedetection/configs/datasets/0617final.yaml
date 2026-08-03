@@ -1,0 +1,115 @@
+﻿# 0617final 数据集配置
+# 10 种目标类型 × 6 种变化状态
+dataset: 0617final
+num_targets: 10
+num_states: 6
+
+target_names:
+  - Farmland
+  - Runway
+  - Taxiway
+  - Apron
+  - Highway
+  - Building
+  - Tank
+  - Aircraft
+  - Vessel
+  - Crater
+
+state_names:
+  - NoChange
+  - Damaged
+  - Reduced
+  - Added
+  - Extended
+  - Replaced
+
+clip_text_prompts:
+  - "farmland, agricultural field, crop land"
+  - "runway, airstrip, landing strip"
+  - "taxiway, aircraft taxi path"
+  - "apron, aircraft parking area"
+  - "highway, main road, expressway"
+  - "building, structure, house"
+  - "fuel tank, storage tank, oil tank"
+  - "aircraft, plane, airplane"
+  - "vessel, ship, boat"
+  - "crater, bomb crater, impact crater"
+
+# target_idx → [valid state_idx, ...]
+target_valid_states:
+  0: [0, 1]                # Farmland: NoChange, Damaged
+  1: [0, 1, 2, 3, 4]      # Runway
+  2: [0, 1, 2, 3, 4]      # Taxiway
+  3: [0, 1, 2, 3, 4]      # Apron
+  4: [0, 1, 2, 3, 4]      # Highway
+  5: [0, 1, 2, 3, 4]      # Building
+  6: [0, 1, 2, 3]         # Tank (no Extended)
+  7: [0, 1, 2, 3, 5]      # Aircraft (Replaced instead of Extended)
+  8: [0, 1, 2, 3, 5]      # Vessel
+  9: [0]                   # Crater (stateless)
+
+# train_id → [target_idx, state_idx]
+# 来源: 0617final/classes.csv
+train_id_map:
+  # Farmland
+  1: [0, 0]   # farmland_nochange
+  2: [0, 1]   # farmland_damaged
+  # Runway
+  3: [1, 0]   # runway_nochange
+  4: [1, 1]   # runway_damaged
+  5: [1, 2]   # runway_reduced
+  6: [1, 3]   # runway_added
+  7: [1, 4]   # runway_extended
+  # Taxiway
+  8: [2, 0]
+  9: [2, 1]
+  10: [2, 2]
+  11: [2, 3]
+  12: [2, 4]
+  # Apron
+  13: [3, 0]
+  14: [3, 1]
+  15: [3, 2]
+  16: [3, 3]
+  17: [3, 4]
+  # Highway
+  23: [4, 0]
+  24: [4, 1]
+  25: [4, 2]
+  26: [4, 3]
+  27: [4, 4]
+  # Building
+  28: [5, 0]
+  29: [5, 1]
+  30: [5, 2]
+  31: [5, 3]
+  32: [5, 4]
+  # Tank
+  53: [6, 0]
+  54: [6, 1]
+  55: [6, 2]
+  56: [6, 3]
+  # Aircraft
+  57: [7, 0]
+  58: [7, 1]
+  59: [7, 2]
+  60: [7, 3]
+  61: [7, 5]   # Replaced
+  # Vessel
+  62: [8, 0]
+  63: [8, 1]
+  64: [8, 2]
+  65: [8, 3]
+  66: [8, 5]   # Replaced
+  # Crater
+  67: [9, 0]
+
+# State CLIP prompts — 区分语义相似但视觉不同的变化状态
+state_clip_prompts:
+  - "unchanged object, no change detected"
+  - "damaged object, partial destruction"
+  - "reduced in size, partially removed"
+  - "newly added construction"
+  - "extended structure, expanded area"
+  - "replaced object, different type"

@@ -1,7 +1,28 @@
-import torch
+﻿import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from HICD.classification.models.vmamba import VSSM, LayerNorm2d, VSSBlock, Permute
+
+
+class SparseChangeGate(nn.Module):
+    """V4.2: Sparse change gate inspired by SNN time-to-first-spike encoding.
+    
+    Filters dense feature differences (pre - post) through a learnable soft
+    threshold so that only pixels with significant changes pass into the
+    SD-SSM branch.  Noise (illumination, registration, seasonal) is suppressed.
+    
+    Equivalent to soft thresholding in compressed sensing / wavelet denoising.
+    """
+    def __init__(self, channels):
+        super().__init__()
+        # learnable per-channel threshold (initialized to 0 → gate ≈ 0.5 at start)
+        self.threshold = nn.Parameter(torch.zeros(1, channels, 1, 1))
+
+    def forward(self, diff):
+        # |diff| > threshold → gate ≈ 1 (keep); |diff| < threshold → gate ≈ 0 (suppress)
+        gate = torch.sigmoid(diff.abs() - self.threshold.abs())
+        return diff * gate
+
 
 
 class ChangeDecoder(nn.Module):
@@ -211,6 +232,12 @@ class ChangeDecoder(nn.Module):
             nn.ReLU(inplace=True),
         )
 
+        # V4.2: Sparse change gates for SD-SSM branches (one per stage)
+        self.sparse_gate_4 = SparseChangeGate(encoder_dims[-1])
+        self.sparse_gate_3 = SparseChangeGate(encoder_dims[-2])
+        self.sparse_gate_2 = SparseChangeGate(encoder_dims[-3])
+        self.sparse_gate_1 = SparseChangeGate(encoder_dims[-4])
+
         # Fuse layer  
         self.fuse_layer_4 = nn.Sequential(nn.Conv2d(kernel_size=1, in_channels=128 * 6, out_channels=128),
                                           nn.BatchNorm2d(128), nn.ReLU())
@@ -253,8 +280,8 @@ class ChangeDecoder(nn.Module):
         ct_tensor_43[:, :, :, W:] = post_feat_4
         p43 = self.st_block_43(ct_tensor_43)
 
-        # V4: SD-SSM branch (pre - post difference)
-        p44 = self.st_block_44(pre_feat_4 - post_feat_4)
+        # V4.2: Sparse change gate filters noise before SD-SSM
+        p44 = self.st_block_44(self.sparse_gate_4(pre_feat_4 - post_feat_4))
 
         p4 = self.fuse_layer_4(torch.cat([p41, p42[:, :, :, ::2], p42[:, :, :, 1::2], p43[:, :, :, 0:W], p43[:, :, :, W:], p44], dim=1))
         # V4: inject local context (Context-SSM)
@@ -278,8 +305,8 @@ class ChangeDecoder(nn.Module):
         ct_tensor_33[:, :, :, W:] = post_feat_3
         p33 = self.st_block_33(ct_tensor_33)
 
-        # V4: SD-SSM branch
-        p34 = self.st_block_34(pre_feat_3 - post_feat_3)
+        # V4.2: Sparse change gate
+        p34 = self.st_block_34(self.sparse_gate_3(pre_feat_3 - post_feat_3))
 
         p3 = self.fuse_layer_3(torch.cat([p31, p32[:, :, :, ::2], p32[:, :, :, 1::2], p33[:, :, :, 0:W], p33[:, :, :, W:], p34], dim=1))
         p3 = p3 + self.context_ssm_3(p3)
@@ -303,8 +330,8 @@ class ChangeDecoder(nn.Module):
         ct_tensor_23[:, :, :, W:] = post_feat_2
         p23 = self.st_block_23(ct_tensor_23)
 
-        # V4: SD-SSM branch
-        p24 = self.st_block_24(pre_feat_2 - post_feat_2)
+        # V4.2: Sparse change gate
+        p24 = self.st_block_24(self.sparse_gate_2(pre_feat_2 - post_feat_2))
 
         p2 = self.fuse_layer_2(torch.cat([p21, p22[:, :, :, ::2], p22[:, :, :, 1::2], p23[:, :, :, 0:W], p23[:, :, :, W:], p24], dim=1))
         p2 = p2 + self.context_ssm_2(p2)
@@ -328,8 +355,8 @@ class ChangeDecoder(nn.Module):
         ct_tensor_13[:, :, :, W:] = post_feat_1
         p13 = self.st_block_13(ct_tensor_13)
 
-        # V4: SD-SSM branch
-        p14 = self.st_block_14(pre_feat_1 - post_feat_1)
+        # V4.2: Sparse change gate
+        p14 = self.st_block_14(self.sparse_gate_1(pre_feat_1 - post_feat_1))
 
         p1 = self.fuse_layer_1(torch.cat([p11, p12[:, :, :, ::2], p12[:, :, :, 1::2], p13[:, :, :, 0:W], p13[:, :, :, W:], p14], dim=1))
         p1 = p1 + self.context_ssm_1(p1)
@@ -367,3 +394,4 @@ class ResBlock(nn.Module):
         out = self.relu(out)
 
         return out
+

@@ -1,0 +1,35 @@
+﻿# SECOND 数据集配置
+# 语义变化检测 → 实例级（仅建筑类）
+dataset: second
+num_targets: 1
+num_states: 5
+
+target_names:
+  - Building
+
+state_names:
+  - NoChange
+  - Damaged
+  - Reduced
+  - Added
+  - Extended
+
+clip_text_prompts:
+  - "building, structure, house"
+
+target_valid_states:
+  0: [0, 1, 2, 3, 4]
+
+train_id_map:
+  1: [0, 0]   # nochange
+  2: [0, 1]   # damaged
+  3: [0, 2]   # reduced
+  4: [0, 3]   # added
+  5: [0, 4]   # extended
+
+state_clip_prompts:
+  - "unchanged building, no change"
+  - "damaged building, partial destruction"
+  - "reduced building, partially removed"
+  - "newly added building, new construction"
+  - "extended building, expanded area"

@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 
 from HICD.changedetection.models.class_mapping import (
-    NUM_TARGETS, NUM_STATES, TARGET_VALID_STATES,
+    DatasetConfig, NUM_TARGETS, NUM_STATES, TARGET_VALID_STATES,
 )
 
 
@@ -61,12 +61,15 @@ class DiceLoss(nn.Module):
 # ?????
 # =====================================================================
 class HierarchicalInstanceLoss(nn.Module):
-    def __init__(self, num_targets=NUM_TARGETS, num_states=NUM_STATES,
+    def __init__(self, num_targets=NUM_TARGETS, num_states=NUM_STATES, dataset_config=None,
                  weight_bbox=2.0, weight_giou=1.5,
                  weight_target=3.0, weight_state=2.0,
                  weight_aux=0.4, focal_alpha=0.25, focal_gamma=2.0,
                  class_weights=None, topk=3):
         super().__init__()
+        if dataset_config:
+            num_targets = dataset_config.num_targets
+            num_states = dataset_config.num_states
         self.num_targets = num_targets
         self.num_states = num_states
         self.weight_bbox = weight_bbox
@@ -284,3 +287,5 @@ class HierarchicalInstanceLoss(nn.Module):
         enclose = (enclose_x2 - enclose_x1) * (enclose_y2 - enclose_y1)
 
         return iou - (enclose - union) / enclose.clamp(min=1e-6)
+
+

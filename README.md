@@ -16,6 +16,9 @@
 10. **SD-SSM (Spatial Difference-aware SSM)** — V4: ChangeDecoder 每个 stage 新增差值分支, 显式将 pre-post 特征差送入 SSM, 让门控机制直接建模"哪里变了"
 11. **Context-SSM** — V4: 多尺度深度可分离卷积注入局部空间上下文, 弥补 SSM 展平 2D→1D 时丢失的局部信息
 12. **Pair-weighted State Loss** — V4: 对稀有 (target, state) 组合加权 (如 Aircraft/Vessel+Replaced 3x), 缓解实例级类别不平衡
+13. **SparseChangeGate** — V4.2: SD-SSM 分支前加可学习软阈值门控, 受 SNN time-to-first-spike 启发, 抑制噪声差分、只让显著变化进入 SSM, 提升信噪比和收敛速度
+14. **双分支解码器 (Dual-Branch Decoder)** — V5: 实例检测 + 语义分割并行, 小目标用 bbox、大范围目标用像素级分割, Task-Specific Adapters 避免梯度冲突
+15. **DatasetConfig 分支路由** — V5: YAML 配置指定每个类别走哪个分支, 新数据集只需改配置文件 — V4.2: SD-SSM 分支前加可学习软阈值门控, 受 SNN time-to-first-spike 启发, 抑制噪声差分、只让显著变化进入 SSM, 提升信噪比和收敛速度
 
 ## 数据集
 
@@ -96,6 +99,16 @@ python changedetection/datasets/pixel_to_instance_0617final.py \
 ```
 
 #
+
+## V4.2 更新 (2026-07-31)
+
+| 改动 | 内容 |
+|------|------|
+| SparseChangeGate | SD-SSM 分支新增可学习软阈值门控, 噪声差分被抑制、只保留显著变化进入 SSM |
+| 灵感来源 | SpikeAdapter (CVPR 2026) 的 GSI-P: SNN time-to-first-spike 编码的稀疏激活思想 |
+| 参数开销 | 每尺度 1 个可学习阈值, 共 4 个参数, 几乎为零 |
+| 原理 | 等价于信号处理中的软阈值 (soft thresholding), 变化检测信号天然是稀疏的, 显式建模比隐式学习更高效 |
+
 ## V4.1 更新 (2026-07-31)
 
 | 改动 | 内容 |
@@ -247,6 +260,71 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 
 > 已移除 6 个稀有类别 (Bridge/Shelter/Tower/Pier/Dock/VehicleRevet, 共 620 实例), 详见 `instances.json.bak`。
 
+
+## V5 更新 (2026-08-03) — 双分支变化检测
+
+### 核心改动
+
+V4 是纯实例级检测，大范围目标（跑道、停机坪）的局部损坏无法精确定位。V5 新增语义分割分支，与实例检测分支并行，由 DatasetConfig 决定每个类别走哪条分支。
+
+| 改动 | 说明 |
+|------|------|
+| Task-Specific Adapters | 两个轻量适配层（LayerNorm + 1×1 Conv），让实例/语义分支看到不同的特征视图，避免梯度冲突 |
+| Semantic Segmentation Head | 轻量 FPN + 双头（目标区域图 + 变化状态图），输出 H/4 分辨率像素级分割 |
+| DatasetConfig Branch Routing | YAML 指定每个类别走哪个分支（Building→instance，Runway→semantic） |
+| Dual-Branch Joint Loss | 实例损失 + CE + Dice，加权求和 |
+| Dataset V5 | 同时加载 bbox（instances.json）和像素级标注（label TIF），语义分支直接读现有像素标签 |
+
+### 分支路由（0617final 默认）
+
+| 分支 | 负责类别 | 输出格式 |
+|------|---------|---------|
+| 实例检测 | Building, Aircraft, Tank, Vessel, Crater | bbox + target + state |
+| 语义分割 | Runway, Taxiway, Apron, Highway, Farmland | 像素级 target_map + state_map |
+
+### V5 新增文件
+
+```
+HICD_v5/changedetection/
+├── models/
+│   ├── HICD_v5.py                  # 主模型（双分支架构）
+│   ├── TaskAdapter.py              # 任务特定适配器
+│   ├── SemanticSegmentationHead.py # 语义分割头（FPN + 双头）
+│   └── DualBranchLoss.py           # 双分支联合损失
+├── datasets/
+│   └── dataset_v5.py               # V5 数据集（bbox + 像素标注）
+└── script/
+    └── train_full_v5.py            # V5 训练脚本
+```
+
+### V5 训练
+
+```bash
+cd /mnt/f/mambacd/home
+export PYTHONPATH="/mnt/f/mambacd/home:$PYTHONPATH"
+
+python HICD_v5/changedetection/script/train_full_v5.py \
+    --dataset 0617final \
+    --data_dir HICD/0617final \
+    --batch_size 4 --grad_accum 4 \
+    --learning_rate 3e-4 --max_epochs 100 \
+    --w_instance 1.0 --w_semantic 1.0 \
+    --clip_mode both --clip_unfreeze_epoch 20 \
+    --use_amp --exp_name v5_dual_branch
+```
+
+### V5 参数量
+
+| 组件 | 参数量 | 说明 |
+|------|--------|------|
+| Siamese VSSM Backbone | ~30M | 共享，不变 |
+| ChangeDecoder | ~10M | 不变 |
+| CLIP Text Encoder | ~63M | 冻结 |
+| Task Adapters | ~0.1M | 新增，极轻量 |
+| Instance Head | ~5M | 沿用 V4 |
+| Semantic Head | ~3M | 新增，轻量 FPN + 双头 |
+| **总计** | ~109M | 比 V4 多 ~3M |
+
 ## 版本历史
 
 | 版本 | 日期 | 主要改动 |
@@ -255,9 +333,13 @@ results = model.inference(pre_data, post_data, confidence_threshold=0.3)
 | V2 | 2026-07-29 | 多尺度 FPN (p1/p2/p3), PositionalEncoding2D, 数据增强 |
 | V3 | 2026-07-30 | One-to-Many Top-K 匹配, loss 重平衡, CLIP 解冻, VSSM-small, 精简至 10 类, 变化注意力, 弹坑感知传播 |
 | V4 | 2026-07-30 | SD-SSM 差值分支, Context-SSM 局部上下文注入, Pair-weighted state loss, bbox 转换 bug 修复 |
+| V4.2 | 2026-07-31 | SparseChangeGate: SD-SSM 分支稀疏软阈值门控 (受 SpikeAdapter/CVPR2026 SNN 启发) |
+| V5 | 2026-08-03 | 双分支解码器：实例检测 + 语义分割，Task-Specific Adapters，DatasetConfig 分支路由，Dual-Branch Loss |
 
 ## 致谢
 
 - [VMamba](https://github.com/MzeroMiko/VMamba) — VSSM 骨干网络
 - [OpenCLIP](https://github.com/mlfoundations/open_clip) — 文本编码器
+
+
 

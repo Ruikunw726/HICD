@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 HierarchicalSCDInstance — 层级实例级语义变化检测完整模型
 
@@ -37,6 +37,7 @@ from HICD.changedetection.models.HierarchicalInstanceHead import (
     HierarchicalInstanceHead,
 )
 from HICD.changedetection.models.class_mapping import (
+    DatasetConfig,
     TARGET_NAMES, STATE_NAMES, CLIP_TEXT_PROMPTS,
     NUM_TARGETS, NUM_STATES,
 )
@@ -65,10 +66,12 @@ class HierarchicalSCDInstance(nn.Module):
         query_feats:  (B, Q, 128) 实例特征
         aux_outputs:  list[dict]   辅助层预测 (训练时)
     """
-    def __init__(self, pretrained, num_queries_per_scale=34,
+    def __init__(self, pretrained, num_queries_per_scale=34, dataset_config=None, clip_mode='both',
                  clip_model="ViT-B-16", clip_weights_path=None,
                  **kwargs):
         super().__init__()
+        self.dataset_config = dataset_config
+        self.clip_mode = clip_mode
 
         # ── 1. Siamese VSSM Encoder ──
         self.encoder = Backbone_VSSM(
@@ -112,8 +115,9 @@ class HierarchicalSCDInstance(nn.Module):
         self.instance_head = HierarchicalInstanceHead(
             visual_dim=128,
             num_queries_per_scale=num_queries_per_scale,
-            num_targets=NUM_TARGETS,
-            num_states=NUM_STATES,
+            dataset_config=dataset_config,
+            num_targets=dataset_config.num_targets if dataset_config else NUM_TARGETS,
+            num_states=dataset_config.num_states if dataset_config else NUM_STATES,
             num_decoder_layers=6,
             nhead=8,
         )
@@ -137,7 +141,7 @@ class HierarchicalSCDInstance(nn.Module):
         p1, p2, p3 = pixel_features
 
         # 3. CLIP 文本编码
-        text_features = self.clip_text_encoder(CLIP_TEXT_PROMPTS)    # (16,512)
+        text_features = self.clip_text_encoder(self.dataset_config.clip_text_prompts)
 
         # 4. 文本-视觉交叉注意力增强
         # 4. 文本-视觉交叉注意力增强 (V2: apply to each scale)
@@ -171,6 +175,7 @@ class HierarchicalSCDInstance(nn.Module):
                 states:  (K,)   变化状态索引
                 scores:  (K,)   置信度
         """
+        # Forward with state CLIP if available
         outputs = self.forward(pre_data, post_data)
         pred_target = outputs['pred_target']   # (B, Q, 16)
         pred_state = outputs['pred_state']     # (B, Q, 6)
@@ -250,3 +255,9 @@ class HierarchicalSCDInstance(nn.Module):
                 inside_y = (crater_centers[:, 1] >= y1) & (crater_centers[:, 1] <= y2)
                 if (inside_x & inside_y).any():
                     states[i] = 1  # 升级为 Damaged
+
+
+
+
+
+
