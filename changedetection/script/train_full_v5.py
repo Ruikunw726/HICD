@@ -409,13 +409,13 @@ class TrainerV5:
 def main():
     parser = argparse.ArgumentParser(description="HICD V5 Training")
     # Data
-    parser.add_argument("--data_dir", type=str, default="HICD/0617final")
+    parser.add_argument("--data_dir", type=str, default="0617final")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas")
-    parser.add_argument("--classes_csv", type=str, default="HICD/0617final/classes.csv")
+    parser.add_argument("--classes_csv", type=str, default="0617final/classes.csv")
     parser.add_argument("--dataset", type=str, default=None)
     # Weights
-    parser.add_argument("--pretrained_weight_path", type=str, default="HICD/weights/vssmtiny_dp01_ckpt_epoch_292.pth")
-    parser.add_argument("--clip_weights_path", type=str, default="HICD/weights/open_clip_pytorch_model.bin")
+    parser.add_argument("--pretrained_weight_path", type=str, default="weights/vssmtiny_dp01_ckpt_epoch_292.pth")
+    parser.add_argument("--clip_weights_path", type=str, default="weights/open_clip_pytorch_model.bin")
     # Model
     parser.add_argument("--num_queries", type=int, default=17)
     parser.add_argument("--clip_mode", type=str, default="both", choices=["both", "target", "state", "none"])
@@ -434,12 +434,12 @@ def main():
     parser.add_argument("--w_instance", type=float, default=1.0, help="实例分支损失权重")
     parser.add_argument("--w_semantic", type=float, default=1.0, help="语义分支损失权重")
     # Output
-    parser.add_argument("--output_dir", type=str, default="HICD/outputs")
+    parser.add_argument("--output_dir", type=str, default="outputs")
     parser.add_argument("--exp_name", type=str, default="v5_dual_branch")
     parser.add_argument("--resume", type=str, default=None)
     # Config
     parser.add_argument("--cfg", type=str,
-                        default="HICD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+                        default="changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()
@@ -450,3 +450,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

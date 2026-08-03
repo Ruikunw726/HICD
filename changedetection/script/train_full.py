@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 全量训练脚本 - HICD 层级实例级变化检测
@@ -37,7 +37,20 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from tqdm import tqdm
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+# Auto-detect project root (HICD/)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "../../.."))
+_PARENT = os.path.dirname(_PROJECT_ROOT)
+if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
+
+def resolve_path(path_str, project_root=None):
+    """Relative path -> absolute path based on project root."""
+    if project_root is None:
+        project_root = _PROJECT_ROOT
+    if os.path.isabs(path_str):
+        return path_str
+    return os.path.normpath(os.path.join(project_root, path_str))
 
 from HICD.changedetection.configs.config import get_config
 from HICD.changedetection.datasets.imutils import normalize_img
@@ -588,19 +601,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HICD Full Training")
 
     # 数据
-    parser.add_argument("--data_dir", type=str, default="HICD/0617final",
+    parser.add_argument("--data_dir", type=str, default="0617final",
                         help="0617final 数据集根目录")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas",
                         help="训练场景，逗号分隔")
-    parser.add_argument("--classes_csv", type=str, default="HICD/0617final/classes.csv")
+    parser.add_argument("--classes_csv", type=str, default="0617final/classes.csv")
     parser.add_argument("--dataset", type=str, default=None, help="Dataset name for config (e.g. 0617final, xbd)")
 
     # 模型
     parser.add_argument("--pretrained_weight_path", type=str,
-                        default="HICD/weights/vssmtiny_dp01_ckpt_epoch_292.pth",
+                        default="weights/vssmtiny_dp01_ckpt_epoch_292.pth",
                         help="VSSM 预训练权重路径")
     parser.add_argument("--clip_weights_path", type=str,
-                        default="HICD/weights/open_clip_pytorch_model.bin",
+                        default="weights/open_clip_pytorch_model.bin",
                         help="CLIP 权重路径")
     parser.add_argument("--num_queries", type=int, default=17)
 
@@ -621,19 +634,21 @@ if __name__ == "__main__":
                         help="CLIP 解冻时机 (epoch), 0=始终冻结, -1=始终解冻")
 
     # 输出
-    parser.add_argument("--output_dir", type=str, default="HICD/outputs")
+    parser.add_argument("--output_dir", type=str, default="outputs")
     parser.add_argument("--exp_name", type=str, default="full_train")
     parser.add_argument("--resume", type=str, default=None, help="恢复训练的检查点路径")
 
     # VSSM config
     parser.add_argument("--cfg", type=str,
-                        default="HICD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+                        default="changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
 
     args = parser.parse_args()
 
     trainer = Trainer(args)
     trainer.train()
+
+
 
 
 

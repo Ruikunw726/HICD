@@ -26,7 +26,18 @@ from collections import defaultdict
 import torch
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from tqdm import tqdm
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "../../.."))
+_PARENT = os.path.dirname(_PROJECT_ROOT)
+if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
+
+def resolve_path(path_str, project_root=None):
+    if project_root is None:
+        project_root = _PROJECT_ROOT
+    if os.path.isabs(path_str):
+        return path_str
+    return os.path.normpath(os.path.join(project_root, path_str))
 from HICD.changedetection.configs.config import get_config
 from HICD.changedetection.datasets.imutils import normalize_img
 from HICD.changedetection.models.HierarchicalSCD_Instance import HierarchicalSCDInstance
@@ -489,17 +500,17 @@ if __name__ == "__main__":
                         help="SCD prediction format")
     parser.add_argument("--pre_dir", type=str, default=None, help="Pre-change map dir (for pre_post)")
     parser.add_argument("--post_dir", type=str, default=None, help="Post-change map dir (for pre_post)")
-    parser.add_argument("--data_dir", type=str, default="HICD/0617final")
+    parser.add_argument("--data_dir", type=str, default="0617final")
     parser.add_argument("--scenes", type=str, default="Airports,Ports,Urban-Rural Areas")
-    parser.add_argument("--cfg", type=str, default="HICD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
+    parser.add_argument("--cfg", type=str, default="changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml")
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--crop_size", type=int, default=512)
     parser.add_argument("--num_queries", type=int, default=17)
     parser.add_argument("--score_thresh", type=float, default=0.3)
     parser.add_argument("--large_area_thresh", type=int, default=5000)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--clip_weights_path", type=str, default="HICD/weights/open_clip_pytorch_model.bin")
-    parser.add_argument("--pretrained_weight_path", type=str, default="HICD/weights/vssmtiny_dp01_ckpt_epoch_292.pth")
+    parser.add_argument("--clip_weights_path", type=str, default="weights/open_clip_pytorch_model.bin")
+    parser.add_argument("--pretrained_weight_path", type=str, default="weights/vssmtiny_dp01_ckpt_epoch_292.pth")
     parser.add_argument("--output_json", type=str, default=None)
     parser.add_argument("--opts", nargs=argparse.REMAINDER, default=None)
     args = parser.parse_args()
@@ -577,3 +588,4 @@ if __name__ == "__main__":
         save['mAP'] = icd.get('mAP',0); save['mAP_50'] = icd.get('mAP_50',0); save['mAP_75'] = icd.get('mAP_75',0)
         with open(args.output_json,'w') as f: json.dump(save, f, indent=2)
         print(f"\nSaved: {args.output_json}")
+
