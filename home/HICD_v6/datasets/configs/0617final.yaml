@@ -1,0 +1,42 @@
+﻿# 0617final Dataset Configuration
+dataset: 0617final
+description: HICD custom dataset
+
+# File naming convention
+pre_suffix: _pre
+post_suffix: _post
+label_suffix: _label
+image_ext: .tif
+label_ext: .tif
+
+# Classes
+num_targets: 6
+num_states: 4
+target_names:
+  - Non-vegetation
+  - Tree
+  - Low vegetation
+  - Water
+  - Building
+  - Playground
+state_names:
+  - no-change
+  - increase
+  - decrease
+  - type-change
+
+# Branch routing
+branch_routing:
+  instance:
+    - Building
+    - Playground
+  semantic:
+    - Non-vegetation
+    - Tree
+    - Low vegetation
+    - Water
+
+# Training config
+train_split: train
+val_split: val
+test_split: test

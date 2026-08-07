@@ -1,0 +1,33 @@
+﻿# XBD Dataset Configuration
+dataset: xbd
+description: xBD disaster damage assessment dataset
+
+# File naming convention
+pre_suffix: _pre_war
+post_suffix: _post_war
+label_suffix: _target
+image_ext: .png
+label_ext: .tif
+
+# Classes
+num_targets: 1
+num_states: 5
+target_names:
+  - Building
+state_names:
+  - no-damage
+  - minor-damage
+  - major-damage
+  - destroyed
+  - un-classified
+
+# Branch routing
+branch_routing:
+  instance:
+    - Building
+  semantic: []
+
+# Training config
+train_split: train
+val_split: val
+test_split: test
