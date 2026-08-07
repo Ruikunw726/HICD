@@ -61,3 +61,20 @@ weights/*.bin
 # Compiled CUDA extensions
 *.so
 mambacd/
+
+# Local working notes and old versions
+HICD_v5_architecture.md
+HyperCLIP_CD_PPT大纲.md
+extract_hyperclip.py
+hicd_v4.mmd
+hicd_v4_arch.png
+home/HICD_v5/
+hyperclip_cd.txt
+背景知识_欧氏vs双曲空间.md
+遥感变化检测_问题与解决思路深度分析.md
+遥感变化检测研究进展报告.md
+
+
+
+# Local working notes
+working_notes/
