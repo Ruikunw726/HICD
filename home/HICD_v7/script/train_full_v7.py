@@ -1,4 +1,4 @@
-"""
+﻿"""
 HICD v7 Training Script
 Full-image training, dual-branch with interaction layer, proper logging.
 """
@@ -149,6 +149,7 @@ class TrainerV7:
             'clip': {'enabled': False, 'model_path': None},
             'active_heads': self.dataset_config.get('active_heads', {}),
             'num_targets': self.dataset_config.get('num_targets', 1),
+            'num_pixel_targets': self.dataset_config.get('num_pixel_targets', self.dataset_config.get('num_targets', 1)),
             'num_states': self.dataset_config.get('num_states', 5),
             'num_change_types': self.dataset_config.get('num_change_types', 5),
             'num_damage_levels': self.dataset_config.get('num_damage_levels', 4),
@@ -433,3 +434,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
