@@ -1,0 +1,58 @@
+﻿# XBD Dataset Configuration
+dataset: xbd
+description: xBD disaster damage assessment dataset
+
+# File naming convention
+pre_suffix: _pre_war
+post_suffix: _post_war
+label_suffix: _target
+image_ext: .png
+label_ext: .tif
+
+# Classes
+num_targets: 1
+num_states: 5
+target_names:
+  - Building
+state_names:
+  - no-damage
+  - minor-damage
+  - major-damage
+  - destroyed
+  - un-classified
+
+# Change types (V7)
+num_change_types: 5
+change_type_names:
+  - unchanged
+  - new_construction
+  - expansion
+  - destruction
+  - damage
+
+# Damage levels (V7)
+num_damage_levels: 4
+damage_level_names:
+  - no_damage
+  - minor_damage
+  - major_damage
+  - destroyed
+
+# Branch routing
+branch_routing:
+  instance:
+    - Building
+  semantic: []
+
+# Active heads (V7)
+active_heads:
+  instance_detection: true
+  change_type: false          # xBD has no change type annotation
+  damage_level: true          # xBD has 5-level damage annotation
+  pixel_target: false         # xBD has no pixel-level target annotation
+  pixel_state: false          # xBD has no pixel-level state annotation
+
+# Training config
+train_split: train
+val_split: val
+test_split: test
