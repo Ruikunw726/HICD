@@ -1,4 +1,4 @@
-"""
+﻿"""
 HICD v7: Hierarchical Instance Change Detection v7
 Dual-branch with interaction layer.
 
@@ -49,6 +49,7 @@ class HICD_v7(nn.Module):
         self.active_heads = active_heads
         
         num_targets = config.get('num_targets', 1)
+        num_pixel_targets = config.get('num_pixel_targets', num_targets)
         num_states = config.get('num_states', 5)
         num_change_types = config.get('num_change_types', 5)
         num_damage_levels = config.get('num_damage_levels', 4)
@@ -99,7 +100,7 @@ class HICD_v7(nn.Module):
         
         # ============ Pixel Branch ============
         self.semantic_head = SemanticHead(
-            num_targets=num_targets,
+            num_targets=num_pixel_targets,
             num_states=num_states,
             in_channels=hidden_dim
         )
@@ -122,6 +123,7 @@ class HICD_v7(nn.Module):
         )
         
         # ============ Loss ============
+        config['num_pixel_targets'] = num_pixel_targets
         self.loss_fn = V7Loss(config)
         
         # Store T1/T2 features for interaction layer
@@ -153,7 +155,7 @@ class HICD_v7(nn.Module):
         # ======== [3] Temporal Fusion (V7: save T1/T2 independent features) ========
         fused_features, t1_features, t2_features = self.tfm(nfa_t1, nfa_t2)
         # fused_features: [C2, C3, C4, C5]
-        # t1_features, t2_features: [C2, C3, C4, C5] — for interaction layer
+        # t1_features, t2_features: [C2, C3, C4, C5] 鈥?for interaction layer
         
         # ======== [4] Task Adapters ========
         instance_features = self.instance_adapter(fused_features)
@@ -262,4 +264,5 @@ class HICD_v7(nn.Module):
 def build_hicd_v7(config):
     """Build HICD v7 model"""
     return HICD_v7(config)
+
 

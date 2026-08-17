@@ -1,50 +1,73 @@
-# SECOND Dataset Configuration
+# SECOND Dataset Configuration (V7)
 dataset: second
 description: Semantic Change Detection Dataset
 
-# File naming convention (matches server data)
 pre_suffix: _pre_war
 post_suffix: _post_war
 label_suffix: _target
 image_ext: .tif
 label_ext: .tif
 
-# Label decode map: raw pixel value -> class index (0-based)
-label_decode_map:
-  0: 0
-  11: 1
-  15: 2
-  19: 3
-  23: 4
-  27: 5
+# Pixel labels: already 0-based, values {0, 2, 3}
+# 0=Non-vegetation, 2=Low-vegetation, 3=Water
+# Tree(1), Building(4), Playground(5) have NO pixel labels
+# NO label_decode_map needed
 
-# Classes
-num_targets: 6
-num_states: 3
+# Instance branch: 1 class (Building, tracked via instances.json)
+num_targets: 1
 target_names:
+  - Building
+
+# Pixel branch: 6 classes (original SECOND class count)
+num_pixel_targets: 6
+pixel_target_names:
   - Non-vegetation
   - Tree
-  - Low vegetation
+  - Low-vegetation
   - Water
   - Building
   - Playground
+
+# State: SECOND instances use state_idx {2,3} (1-indexed change states)
+# 0=no-change, 1=unused, 2=increase, 3=decrease
+# Need 4 to cover the label space
+num_states: 4
 state_names:
+  - no-change
+  - unused
+  - increase
+  - decrease
+
+# V7 change types
+num_change_types: 3
+change_type_names:
   - no-change
   - increase
   - decrease
+
+# V7 damage levels
+num_damage_levels: 4
 
 # Branch routing
 branch_routing:
   instance:
     - Building
-    - Playground
   semantic:
     - Non-vegetation
     - Tree
-    - Low vegetation
+    - Low-vegetation
     - Water
+    - Building
+    - Playground
 
-# Training config
+# Active heads (V7)
+active_heads:
+  instance_detection: true
+  change_type: true
+  damage_level: false
+  pixel_target: true
+  pixel_state: true
+
 train_split: train
 val_split: val
 test_split: test
